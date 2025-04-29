@@ -1,4 +1,8 @@
 import React, { useState, useRef, useEffect } from "react";
+import { Amplify } from 'aws-amplify';
+import { FaceLivenessDetector } from '@aws-amplify/ui-react-liveness';
+import '@aws-amplify/ui-react/styles.css';
+
 
 export default function UserRegistrationForm() {
   const [step, setStep] = useState("form");
@@ -19,18 +23,9 @@ export default function UserRegistrationForm() {
   const [faceError, setFaceError] = useState(null);
   const [verificationAttempts, setVerificationAttempts] = useState(0);
   const [showRetryOptions, setShowRetryOptions] = useState(false);
-  const [faceDetectionPaused, setFaceDetectionPaused] = useState(false);
-
-  const [livenessStage, setLivenessStage] = useState('idle');
-  const [livenessProgress, setLivenessProgress] = useState({
-    center: false,
-    up: false,
-    down: false,
-    left: false,
-    right: false,
-  });
-  const requiredMovements = ['center', 'up', 'down', 'left', 'right'];
-  const poseDataRef = useRef(null);
+  const [livenessSessionId, setLivenessSessionId] = useState(null);
+  const [isCreatingSession, setIsCreatingSession] = useState(false);
+  const [isCheckingResult, setIsCheckingResult] = useState(false);
 
   const videoRef = useRef(null);
   const faceVideoRef = useRef(null);
@@ -142,304 +137,102 @@ export default function UserRegistrationForm() {
   const handleSubmit = async () => {
     stopCamera();
     await delay(300);
-    await handleFlip("verification", "right");
-    await delay(200);
-
     setFaceVerified(null);
     setVerificationAttempts(0);
     setShowRetryOptions(false);
-    setFaceDetectionPaused(false);
-    setFacePresent(false);
-    lastDetectionTime.current = 0;
-    setLivenessStage('idle');
-    setLivenessProgress({ center: false, up: false, down: false, left: false, right: false });
-    poseDataRef.current = null;
+    setLivenessSessionId(null);
+    setIsCreatingSession(false);
+    setIsCheckingResult(false);
+    await handleFlip("verification", "right");
+  };
+
+  const handleStartLivenessCheck = async () => {
+    setIsCreatingSession(true);
     setFaceError(null);
-    setVerifying(false);
-    setDetecting(false);
-
-    startCamera("user", faceVideoRef);
-  };
-
-  const checkLivenessPose = (pose) => {
-    if (!pose || livenessStage === 'idle' || livenessStage === 'verifying' || livenessStage === 'complete' || livenessStage === 'failed') return;
-
-    const { Yaw: yaw, Pitch: pitch } = pose;
-    const YAW_THRESHOLD = 18;
-    const PITCH_THRESHOLD = 18;
-    const CENTER_THRESHOLD = 8;
-
-    if (typeof yaw !== 'number' || typeof pitch !== 'number') {
-      console.warn("Invalid pose data received:", pose);
-      setFaceError("Could not read head pose. Try adjusting lighting or position.");
-      return;
-    }
-
-    let currentMoveSatisfied = false;
-    let feedbackError = null;
-
-    switch (livenessStage) {
-      case 'center':
-        if (Math.abs(yaw) < CENTER_THRESHOLD && Math.abs(pitch) < CENTER_THRESHOLD) {
-          currentMoveSatisfied = true;
-        } else {
-          feedbackError = "Look straight at the camera.";
-          if (Math.abs(yaw) >= CENTER_THRESHOLD) feedbackError += " Center your head horizontally.";
-          if (Math.abs(pitch) >= CENTER_THRESHOLD) feedbackError += " Center your head vertically.";
-        }
-        break;
-      case 'up':
-        if (pitch < -PITCH_THRESHOLD && Math.abs(yaw) < YAW_THRESHOLD) {
-          currentMoveSatisfied = true;
-        } else {
-          feedbackError = "Tilt your head slowly upwards.";
-          if (pitch >= -PITCH_THRESHOLD) feedbackError += " Tilt higher.";
-          if (Math.abs(yaw) >= YAW_THRESHOLD) feedbackError += " Keep looking straight ahead while tilting.";
-        }
-        break;
-      case 'down':
-        if (pitch > PITCH_THRESHOLD && Math.abs(yaw) < YAW_THRESHOLD) {
-          currentMoveSatisfied = true;
-        } else {
-          feedbackError = "Tilt your head slowly downwards.";
-          if (pitch <= PITCH_THRESHOLD) feedbackError += " Tilt lower.";
-          if (Math.abs(yaw) >= YAW_THRESHOLD) feedbackError += " Keep looking straight ahead while tilting.";
-        }
-        break;
-      case 'left':
-        if (yaw > YAW_THRESHOLD && Math.abs(pitch) < PITCH_THRESHOLD) {
-          currentMoveSatisfied = true;
-        } else {
-          feedbackError = "Turn your head slowly to your left.";
-          if (yaw <= YAW_THRESHOLD) feedbackError += " Turn further left.";
-          if (Math.abs(pitch) >= PITCH_THRESHOLD) feedbackError += " Keep your head level while turning.";
-        }
-        break;
-      case 'right':
-        if (yaw < -YAW_THRESHOLD && Math.abs(pitch) < PITCH_THRESHOLD) {
-          currentMoveSatisfied = true;
-        } else {
-          feedbackError = "Turn your head slowly to your right.";
-          if (yaw >= -YAW_THRESHOLD) feedbackError += " Turn further right.";
-          if (Math.abs(pitch) >= PITCH_THRESHOLD) feedbackError += " Keep your head level while turning.";
-        }
-        break;
-      default:
-        break;
-    }
-
-    if (currentMoveSatisfied) {
-      console.log(`Liveness: Detected movement for stage: ${livenessStage}`);
-      setLivenessProgress(prev => ({ ...prev, [livenessStage]: true }));
-      if (faceError && !faceError.toLowerCase().includes('network') && !faceError.toLowerCase().includes('lighting')) {
-           setFaceError(null);
-      }
-
-      const currentIndex = requiredMovements.indexOf(livenessStage);
-      const nextIndex = currentIndex + 1;
-
-      if (nextIndex < requiredMovements.length) {
-        setTimeout(() => {
-          setLivenessStage(requiredMovements[nextIndex]);
-        }, 300);
-      } else {
-        console.log("Liveness: All movements detected.");
-        setFaceDetectionPaused(true);
-        setLivenessStage('verifying');
-        captureAndVerify();
-      }
-    } else if (feedbackError) {
-        if (faceError !== feedbackError) {
-            setFaceError(feedbackError);
-        }
-    }
-  };
-
-  const detectFaceAndPoseOnServer = async (dataURL) => {
-    const now = Date.now();
-    if (now - lastDetectionTime.current < 1000 || faceDetectionPaused || livenessStage === 'idle' || livenessStage === 'verifying' || livenessStage === 'complete' || livenessStage === 'failed') {
-      return;
-    }
-
-    setDetecting(true);
-    lastDetectionTime.current = now;
+    setFaceVerified(null);
+    setShowRetryOptions(false);
 
     try {
-      const res = await fetch('/api/detect-face', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ image: dataURL }),
-      });
-      const json = await res.json();
+      const response = await fetch('/api/create-liveness-session', { method: 'POST' });
+      const data = await response.json();
 
-      if (!res.ok || json.error) {
-        console.warn("Detection API error:", json.error || `HTTP ${res.status}`);
-        setFacePresent(false);
-        poseDataRef.current = null;
-        const currentPoseFeedback = faceError && (faceError.includes("Tilt") || faceError.includes("Turn") || faceError.includes("Look straight") || faceError.includes("Center your head"));
-        if (!currentPoseFeedback) {
-           if (json.error && json.error !== faceError) setFaceError(json.error);
-           else if (!json.error && res.status !== 200) setFaceError(`Detection failed (Status: ${res.status})`);
-           else setFaceError("Could not detect face. Check lighting and position.");
-        }
-      } else {
-        setFacePresent(json.faceDetected);
-        if(json.faceDetected && json.pose) {
-          poseDataRef.current = json.pose;
-          checkLivenessPose(json.pose);
-        } else if (json.faceDetected && !json.pose) {
-          console.warn("Face detected but no pose data returned.");
-          poseDataRef.current = null;
-          const currentPoseFeedback = faceError && (faceError.includes("Tilt") || faceError.includes("Turn") || faceError.includes("Look straight") || faceError.includes("Center your head"));
-          if (requiredMovements.includes(livenessStage) && !currentPoseFeedback) {
-            setFaceError("Could not determine head pose.");
-          }
-        } else {
-          poseDataRef.current = null;
-          const currentPoseFeedback = faceError && (faceError.includes("Tilt") || faceError.includes("Turn") || faceError.includes("Look straight") || faceError.includes("Center your head"));
-          if (requiredMovements.includes(livenessStage) && !currentPoseFeedback) {
-            setFaceError("No face detected. Please position your face clearly in the frame.");
-          }
-        }
+      if (!response.ok || !data.sessionId) {
+        throw new Error(data.error || 'Failed to create session');
       }
-    } catch (e) {
-      console.error("Network error during detection:", e);
-      setFacePresent(false);
-      poseDataRef.current = null;
-      setFaceError('Network error connecting to detection service.');
+
+      console.log("Received Liveness SessionId:", data.sessionId);
+      setLivenessSessionId(data.sessionId);
+
+    } catch (error) {
+      console.error("Error creating liveness session:", error);
+      setFaceError(`Failed to start check: ${error.message}`);
+      setShowRetryOptions(true);
     } finally {
-      setDetecting(false);
+      setIsCreatingSession(false);
     }
   };
 
-  useEffect(() => {
-    let interval;
-    const isActiveLiveness = requiredMovements.includes(livenessStage);
-
-    if (step === 'verification' && isActiveLiveness && !faceDetectionPaused) {
-      console.log(`Liveness: Starting polling for stage: ${livenessStage}`);
-      setFaceError(null);
-      interval = setInterval(() => {
-        if (faceVideoRef.current && faceVideoRef.current.readyState >= 2 && faceCanvasRef.current) {
-          const canvas = faceCanvasRef.current;
-          const context = canvas.getContext("2d");
-          const videoWidth = faceVideoRef.current.videoWidth;
-          const videoHeight = faceVideoRef.current.videoHeight;
-          if (canvas.width !== videoWidth || canvas.height !== videoHeight) {
-            canvas.width = videoWidth || 320;
-            canvas.height = videoHeight || 240;
-          }
-          context.drawImage(faceVideoRef.current, 0, 0, canvas.width, canvas.height);
-          const dataURL = canvas.toDataURL('image/jpeg', 0.8);
-          detectFaceAndPoseOnServer(dataURL);
-        }
-      }, 750);
-    } else {
-      console.log(`Liveness: Polling conditions not met or stopped. Step: ${step}, Stage: ${livenessStage}, Paused: ${faceDetectionPaused}`);
-    }
-
-    return () => {
-      if(interval) {
-        console.log("Liveness: Clearing polling interval.");
-        clearInterval(interval);
-      }
-    };
-  }, [step, livenessStage, faceDetectionPaused]);
-
-  const captureAndVerify = async () => {
-    console.log("Liveness: Capturing final image for verification.");
+  const handleAnalysisComplete = async () => {
+    console.log("Liveness analysis complete, fetching results for session:", livenessSessionId);
+    setIsCheckingResult(true);
     setFaceError(null);
 
-    if (faceCanvasRef.current && faceVideoRef.current && faceVideoRef.current.readyState >= 2) {
-      const canvas = faceCanvasRef.current;
-      const context = canvas.getContext("2d");
-      const videoWidth = faceVideoRef.current.videoWidth;
-      const videoHeight = faceVideoRef.current.videoHeight;
-      canvas.width = videoWidth || 320;
-      canvas.height = videoHeight || 240;
-      context.drawImage(faceVideoRef.current, 0, 0, canvas.width, canvas.height);
-      const finalSelfieDataUrl = canvas.toDataURL('image/png');
+    try {
+      const response = await fetch(`/api/get-liveness-result?sessionId=${livenessSessionId}`);
+      const data = await response.json();
 
-      setVerifying(true);
-      setShowRetryOptions(false);
+      if (!response.ok) {
+        throw new Error(data.error || `Failed to get results (Status: ${response.status})`);
+      }
 
-      try {
-        const resp = await fetch('/api/verify-face', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ idImage: photoFront, selfie: finalSelfieDataUrl }),
-        });
+      console.log("Liveness Result:", data);
 
-        let errorMessage = 'Verification failed. Please try again.';
-        let responseData = null;
-
-        try {
-          responseData = await resp.json();
-        } catch (jsonError) {
-          console.error("Failed to parse verification response:", jsonError);
-        }
-
-        if (!resp.ok) {
-          console.error("Face verification API error:", resp.status, responseData);
-          errorMessage = responseData?.error || `Verification failed (Status: ${resp.status})`;
-          setFaceVerified(false);
-          setVerificationAttempts(prev => prev + 1);
-          setShowRetryOptions(true);
-          setLivenessStage('failed');
-          setFaceError(errorMessage);
-          return;
-        }
-
-        setFaceVerified(responseData.match);
-        console.log("Verification result:", responseData.match);
-
-        if (!responseData.match) {
-          errorMessage = "Face could not be matched to the ID. Please ensure you are the person in the ID.";
-          setVerificationAttempts(prev => prev + 1);
-          setShowRetryOptions(true);
-          setLivenessStage('failed');
-          setFaceError(errorMessage);
-        } else {
-          setLivenessStage('complete');
-          setFaceError(null);
-        }
-      } catch (err) {
-        console.error("Face verification fetch error:", err);
+      if (data.status === 'SUCCEEDED' && data.isLive) {
+         setFaceVerified(true);
+      } else {
         setFaceVerified(false);
         setVerificationAttempts(prev => prev + 1);
         setShowRetryOptions(true);
-        setLivenessStage('failed');
-        setFaceError('Network error during face verification.');
-      } finally {
-        setVerifying(false);
+        setFaceError(data.error || 'Liveness check failed or face was not live.');
+        setLivenessSessionId(null);
       }
-    } else {
-      console.error("Liveness: Failed to capture final image - video or canvas not ready.");
-      setFaceError("Could not capture image for verification. Please ensure camera access.");
-      setLivenessStage('failed');
+
+    } catch (error) {
+      console.error("Error fetching liveness results:", error);
+      setFaceVerified(false);
+      setVerificationAttempts(prev => prev + 1);
       setShowRetryOptions(true);
-      setVerifying(false);
-      setFaceDetectionPaused(true);
+      setFaceError(`Result Error: ${error.message}`);
+      setLivenessSessionId(null);
+    } finally {
+      setIsCheckingResult(false);
     }
+  };
+
+  const handleLivenessError = (error) => {
+    console.error("Error during FaceLivenessDetector flow:", error);
+    setFaceVerified(false);
+    setFaceError(`Liveness Error: ${error.message}`);
+    setVerificationAttempts(prev => prev + 1);
+    setShowRetryOptions(true);
+    setLivenessSessionId(null);
+    setIsCreatingSession(false);
+    setIsCheckingResult(false);
   };
 
   const handleRetryVerification = () => {
     setFaceVerified(null);
     setShowRetryOptions(false);
-    setFaceDetectionPaused(false);
-    lastDetectionTime.current = 0;
-    setLivenessProgress({ center: false, up: false, down: false, left: false, right: false });
-    setLivenessStage('center');
-    setFaceError(null);
-    poseDataRef.current = null;
-    setVerifying(false);
-    setDetecting(false);
+    setLivenessSessionId(null);
+    setIsCreatingSession(false);
+    setIsCheckingResult(false);
   };
 
   const handleVerificationComplete = () => {
     if (faceVerified) {
       handleFlip("success", "right");
     } else {
+      console.warn("handleVerificationComplete called but faceVerified is not true.");
       handleFlip("completed", "left");
     }
   }
@@ -543,76 +336,52 @@ export default function UserRegistrationForm() {
   }, []);
 
   const renderVerificationStepContent = () => {
-    const getLivenessInstruction = () => {
-      switch (livenessStage) {
-        case 'idle': return 'Get ready for the liveness check.';
-        case 'center': return 'Look straight ahead at the camera.';
-        case 'up': return 'Slowly tilt your head upwards.';
-        case 'down': return 'Slowly tilt your head downwards.';
-        case 'left': return 'Slowly turn your head to your left.';
-        case 'right': return 'Slowly turn your head to your right.';
-        case 'verifying': return 'Verifying your identity... Please hold still.';
-        case 'complete': return faceVerified ? 'Identity Verified!' : 'Liveness check complete. Verification pending...';
-        case 'failed': return 'Liveness check failed. See tips below.';
-        default: return 'Position your face in the frame.';
-      }
-    };
-
-    const renderProgressIndicators = () => {
-      return (
-        <div className="flex justify-center space-x-2 my-3">
-          {requiredMovements.map((move) => (
-            <div key={move} className="flex flex-col items-center">
-              <span
-                className={`inline-block w-5 h-5 rounded-full border-2 ${
-                  livenessProgress[move]
-                    ? 'bg-green-500 border-green-600'
-                    : 'bg-gray-200 border-gray-400'
-                } transition-colors duration-300`}
-              ></span>
-              <span className="text-xs mt-1 capitalize text-gray-600">{move}</span>
-            </div>
-          ))}
-        </div>
-      );
-    };
-
     return (
       <div className="text-center space-y-4">
         <h2 className="text-xl font-semibold">
            Identity Verification
         </h2>
-         <p className="text-sm text-gray-600 -mt-2">Liveness Check Required</p>
+         <p className="text-sm text-gray-600 -mt-2">Please complete the face liveness check.</p>
 
-        <div className="mx-auto w-80 h-60 relative overflow-hidden rounded-lg border-2 border-gray-300 shadow-inner bg-gray-100">
-          {(livenessStage !== 'verifying' && livenessStage !== 'complete' && livenessStage !== 'failed') && faceVerified === null && (
-             <div className="absolute inset-0 z-10 pointer-events-none flex items-center justify-center">
-                <div className="w-[180px] h-[220px] border-4 border-dashed border-yellow-400 rounded-[50%] opacity-75 shadow-md"></div>
-             </div>
-          )}
-          <video ref={faceVideoRef} autoPlay muted playsInline className="w-full h-full object-cover transform scale-x-[-1]" />
-          <canvas ref={faceCanvasRef} className="absolute top-0 left-0 opacity-0 pointer-events-none" width="320" height="240"/>
+        <div className="min-h-[350px] flex flex-col items-center justify-center">
+            {livenessSessionId && !isCheckingResult && faceVerified === null && (
+                <FaceLivenessDetector
+                    sessionId={livenessSessionId}
+                    region={awsRegion}
+                    onAnalysisComplete={handleAnalysisComplete}
+                    onError={handleLivenessError}
+                />
+            )}
+
+             {isCreatingSession && (
+                 <div className="flex flex-col items-center space-y-2">
+                     <div className="w-8 h-8 border-4 border-blue-200 border-t-blue-500 rounded-full animate-spin"></div>
+                     <p className="text-blue-600">Starting liveness check...</p>
+                 </div>
+            )}
+
+             {isCheckingResult && (
+                 <div className="flex flex-col items-center space-y-2">
+                     <div className="w-8 h-8 border-4 border-green-200 border-t-green-500 rounded-full animate-spin"></div>
+                     <p className="text-green-600">Verifying results...</p>
+                 </div>
+            )}
+
+            {!livenessSessionId && !isCreatingSession && !isCheckingResult && faceVerified === null && (
+                <button
+                    onClick={handleStartLivenessCheck}
+                    disabled={isCreatingSession}
+                    className="px-6 py-3 bg-yellow-500 hover:bg-yellow-400 text-black rounded-full shadow-md font-semibold text-lg transition-all duration-200 ease-in-out transform hover:scale-105 disabled:opacity-50"
+                >
+                    Start Liveness Check
+                </button>
+            )}
+
+            {faceError && faceVerified !== false && (
+                 <p className="text-red-600 text-sm mt-2 px-2">{faceError}</p>
+             )}
+
         </div>
-
-        {faceVerified !== true && (
-           <div className="text-sm min-h-[80px] flex flex-col justify-center items-center bg-gray-50 p-3 rounded-lg border border-gray-200">
-              <p className={`text-base font-medium mb-2 ${livenessStage === 'failed' || faceError ? 'text-red-600' : 'text-gray-800'}`}>
-                 {getLivenessInstruction()}
-              </p>
-
-              {requiredMovements.includes(livenessStage) && renderProgressIndicators()}
-
-               {(detecting || verifying) && livenessStage !== 'failed' && (
-                   <div className="mt-2 w-6 h-6 border-2 border-blue-200 border-t-blue-500 rounded-full animate-spin"></div>
-               )}
-
-              {faceError && <p className="text-red-600 text-xs mt-2 px-2">{faceError}</p>}
-
-               {!facePresent && requiredMovements.includes(livenessStage) && !detecting && !faceError && (
-                   <p className="text-amber-600 text-xs mt-1">Cannot detect face. Adjust position/lighting.</p>
-               )}
-           </div>
-        )}
 
         {faceVerified === true && (
             <div className="bg-green-100 p-4 rounded-lg border border-green-300 shadow">
@@ -630,26 +399,26 @@ export default function UserRegistrationForm() {
             </div>
         )}
 
-        {(faceVerified === false || (livenessStage === 'failed' && faceVerified === null)) && (
+        {faceVerified === false && (
            <div className="bg-red-50 p-4 rounded-lg border border-red-200 shadow">
               <div className="flex items-center justify-center mb-2">
                  <svg className="w-7 h-7 text-red-600 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
                 <p className="text-red-700 font-medium text-lg">
-                   {faceVerified === false ? 'Verification Failed' : 'Liveness Check Failed'}
+                    Verification Failed
                 </p>
               </div>
              <p className="text-red-600 text-sm mb-3 px-2">
-                {faceError || (faceVerified === false ? "We couldn't match your face with the ID provided." : "Could not complete the liveness check.")}
+                 {faceError || "Could not verify your liveness. Please try again."}
              </p>
 
-            {(showRetryOptions || livenessStage === 'failed') && (
+            {showRetryOptions && (
               <div className="space-y-3 mt-3 border-t border-red-100 pt-3">
                 <p className="text-gray-700 text-sm font-medium">Troubleshooting Tips:</p>
                  <ul className="text-xs text-left list-disc pl-6 text-gray-600 space-y-1">
                   <li>Ensure your face is well-lit from the front. Avoid backlighting or strong shadows.</li>
                    <li>Remove hats, sunglasses, or face coverings. Regular glasses are usually okay if worn in ID.</li>
                   <li>Hold your phone still at eye level.</li>
-                  <li>Follow the head movement prompts slowly and clearly.</li>
+                   <li>Position your face fully within the oval on the screen.</li>
                    <li>Ensure you are the same person shown on the ID document.</li>
                 </ul>
 
@@ -683,20 +452,6 @@ export default function UserRegistrationForm() {
             )}
           </div>
         )}
-
-        {faceVerified === null && livenessStage === 'idle' && !verifying && (
-          <div className="flex justify-center mt-4">
-            <button
-              onClick={() => {
-                 setLivenessStage('center');
-                 setFaceDetectionPaused(false);
-              }}
-              className="px-6 py-3 bg-yellow-500 hover:bg-yellow-400 text-black rounded-full shadow-md font-semibold text-lg transition-all duration-200 ease-in-out transform hover:scale-105"
-            >
-              Start Liveness Check
-            </button>
-          </div>
-        )}
       </div>
     );
   };
@@ -706,7 +461,10 @@ export default function UserRegistrationForm() {
       ref={containerRef}
       className="p-6 max-w-md mx-auto bg-gradient-to-br from-gray-100 to-gray-300 rounded-3xl shadow-xl transition-transform duration-300 relative border border-gray-300 will-change-transform"
     >
-      <style>{`button { border-radius: 10px !important; }`}</style>
+       <style>{`
+         button { border-radius: 10px !important; }
+         .flipped-video { transform: scaleX(-1); }
+       `}</style>
       {step === "form" && (
         <div className="space-y-4">
           <h2 className="text-2xl font-semibold text-gray-800">Register</h2>
