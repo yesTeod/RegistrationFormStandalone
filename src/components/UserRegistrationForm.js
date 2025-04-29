@@ -216,6 +216,8 @@ export default function UserRegistrationForm() {
         break;
     }
 
+    console.log(`[Liveness CHECK] Stage: ${livenessStage}, Smoothed Yaw: ${yaw.toFixed(2)}, Pitch: ${pitch.toFixed(2)}, Target Met: ${targetPoseMet}`);
+
     const now = Date.now();
     if (targetPoseMet === livenessStage) {
       if (poseHoldStateRef.current.targetPose === livenessStage) {
@@ -289,8 +291,11 @@ export default function UserRegistrationForm() {
             console.warn("Received non-numeric pose data:", json.pose);
           }
           
+          console.log(`[Liveness RAW] Stage: ${livenessStage}, Yaw: ${json.pose.Yaw?.toFixed(2)}, Pitch: ${json.pose.Pitch?.toFixed(2)}`);
+          
           const smoothed = getSmoothedPose();
           if (smoothed) {
+            console.log(`[Liveness SMOOTHED] Stage: ${livenessStage}, Yaw: ${smoothed.Yaw.toFixed(2)}, Pitch: ${smoothed.Pitch.toFixed(2)}`);
             checkLivenessPose(smoothed);
           } else {
             if(poseHoldStateRef.current.targetPose) {
