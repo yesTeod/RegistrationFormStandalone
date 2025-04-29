@@ -674,7 +674,7 @@ export default function UserRegistrationForm() {
                 <div className="w-[180px] h-[220px] border-4 border-dashed border-yellow-400 rounded-[50%] opacity-75 shadow-md"></div>
              </div>
           )}
-          <video ref={faceVideoRef} autoPlay muted playsInline className="w-full h-full object-cover" />
+          <video ref={faceVideoRef} autoPlay muted playsInline className="w-full h-full object-cover transform scale-x-[-1]" />
           <canvas ref={faceCanvasRef} className="absolute top-0 left-0 opacity-0 pointer-events-none" width="320" height="240"/>
         </div>
 
