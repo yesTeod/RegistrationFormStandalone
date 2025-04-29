@@ -31,6 +31,10 @@ export default function UserRegistrationForm() {
   });
   const requiredMovements = ['center', 'up', 'down', 'left', 'right'];
   const poseDataRef = useRef(null);
+  const poseHistoryRef = useRef([]);
+  const POSE_HISTORY_LENGTH = 3;
+  const poseHoldStateRef = useRef({ targetPose: null, startTime: null });
+  const POSE_HOLD_DURATION = 300;
 
   const videoRef = useRef(null);
   const faceVideoRef = useRef(null);
@@ -161,59 +165,90 @@ export default function UserRegistrationForm() {
     startCamera("user", faceVideoRef);
   };
 
-  const checkLivenessPose = (pose) => {
-    if (!pose || livenessStage === 'idle' || livenessStage === 'verifying' || livenessStage === 'complete' || livenessStage === 'failed') return;
+  const getSmoothedPose = () => {
+    if (poseHistoryRef.current.length < POSE_HISTORY_LENGTH) {
+      return null;
+    }
+    let sumYaw = 0;
+    let sumPitch = 0;
+    poseHistoryRef.current.forEach(p => {
+      sumYaw += p.Yaw;
+      sumPitch += p.Pitch;
+    });
+    return {
+      Yaw: sumYaw / POSE_HISTORY_LENGTH,
+      Pitch: sumPitch / POSE_HISTORY_LENGTH,
+    };
+  };
 
-    const { Yaw: yaw, Pitch: pitch } = pose;
-    const YAW_THRESHOLD = 15;
-    const PITCH_THRESHOLD = 15;
+  const checkLivenessPose = (smoothedPose) => {
+    if (!smoothedPose || livenessStage === 'idle' || livenessStage === 'verifying' || livenessStage === 'complete' || livenessStage === 'failed') return;
+
+    const { Yaw: yaw, Pitch: pitch } = smoothedPose;
+    const YAW_THRESHOLD = 18;
+    const PITCH_THRESHOLD = 18;
+    const CENTER_THRESHOLD = 8;
 
     if (typeof yaw !== 'number' || typeof pitch !== 'number') {
-      console.warn("Invalid pose data received:", pose);
-      setFaceError("Could not read head pose. Try adjusting lighting or position.");
+      console.warn("Invalid smoothed pose data:", smoothedPose);
       return;
     }
 
-    let currentMoveSatisfied = false;
+    let targetPoseMet = null;
 
     switch (livenessStage) {
       case 'center':
-        if (Math.abs(yaw) < 7 && Math.abs(pitch) < 7) currentMoveSatisfied = true;
+        if (Math.abs(yaw) < CENTER_THRESHOLD && Math.abs(pitch) < CENTER_THRESHOLD) targetPoseMet = 'center';
         break;
       case 'up':
-        if (pitch < -PITCH_THRESHOLD && Math.abs(yaw) < YAW_THRESHOLD) currentMoveSatisfied = true;
+        if (pitch < -PITCH_THRESHOLD && Math.abs(yaw) < YAW_THRESHOLD) targetPoseMet = 'up';
         break;
       case 'down':
-        if (pitch > PITCH_THRESHOLD && Math.abs(yaw) < YAW_THRESHOLD) currentMoveSatisfied = true;
+        if (pitch > PITCH_THRESHOLD && Math.abs(yaw) < YAW_THRESHOLD) targetPoseMet = 'down';
         break;
       case 'left':
-        if (yaw > YAW_THRESHOLD && Math.abs(pitch) < PITCH_THRESHOLD) currentMoveSatisfied = true;
+        if (yaw > YAW_THRESHOLD && Math.abs(pitch) < PITCH_THRESHOLD + 5) targetPoseMet = 'left';
         break;
       case 'right':
-        if (yaw < -YAW_THRESHOLD && Math.abs(pitch) < PITCH_THRESHOLD) currentMoveSatisfied = true;
+        if (yaw < -YAW_THRESHOLD && Math.abs(pitch) < PITCH_THRESHOLD + 5) targetPoseMet = 'right';
         break;
       default:
         break;
     }
 
-    if (currentMoveSatisfied) {
-      console.log(`Liveness: Detected movement for stage: ${livenessStage}`);
-      setLivenessProgress(prev => ({ ...prev, [livenessStage]: true }));
-      setFaceError(null);
+    const now = Date.now();
+    if (targetPoseMet === livenessStage) {
+      if (poseHoldStateRef.current.targetPose === livenessStage) {
+        if (now - poseHoldStateRef.current.startTime >= POSE_HOLD_DURATION) {
+          console.log(`Liveness: Pose "${livenessStage}" held successfully.`);
+          setLivenessProgress(prev => ({ ...prev, [livenessStage]: true }));
+          setFaceError(null);
+          poseHoldStateRef.current = { targetPose: null, startTime: null };
+          poseHistoryRef.current = [];
 
-      const currentIndex = requiredMovements.indexOf(livenessStage);
-      const nextIndex = currentIndex + 1;
+          const currentIndex = requiredMovements.indexOf(livenessStage);
+          const nextIndex = currentIndex + 1;
 
-      if (nextIndex < requiredMovements.length) {
-        setTimeout(() => {
-          setLivenessStage(requiredMovements[nextIndex]);
-        }, 300);
+          if (nextIndex < requiredMovements.length) {
+            setTimeout(() => {
+              setLivenessStage(requiredMovements[nextIndex]);
+            }, 150);
+          } else {
+            console.log("Liveness: All movements detected.");
+            setFaceDetectionPaused(true);
+            setLivenessStage('verifying');
+            captureAndVerify();
+          }
+        }
       } else {
-        console.log("Liveness: All movements detected.");
-        setFaceDetectionPaused(true);
-        setLivenessStage('verifying');
-        captureAndVerify();
+        console.log(`Liveness: Started holding target pose: ${livenessStage}`);
+        poseHoldStateRef.current = { targetPose: livenessStage, startTime: now };
       }
+    } else {
+      if (poseHoldStateRef.current.targetPose) {
+        console.log(`Liveness: Hold reset. Pose ${targetPoseMet} does not match target ${livenessStage}`);
+      }
+      poseHoldStateRef.current = { targetPose: null, startTime: null };
     }
   };
 
@@ -245,7 +280,23 @@ export default function UserRegistrationForm() {
         setFacePresent(json.faceDetected);
         if(json.faceDetected && json.pose) {
           poseDataRef.current = json.pose;
-          checkLivenessPose(json.pose);
+          if (typeof json.pose.Yaw === 'number' && typeof json.pose.Pitch === 'number') {
+            poseHistoryRef.current.push(json.pose);
+            if (poseHistoryRef.current.length > POSE_HISTORY_LENGTH) {
+              poseHistoryRef.current.shift();
+            }
+          } else {
+            console.warn("Received non-numeric pose data:", json.pose);
+          }
+          
+          const smoothed = getSmoothedPose();
+          if (smoothed) {
+            checkLivenessPose(smoothed);
+          } else {
+            if(poseHoldStateRef.current.targetPose) {
+              poseHoldStateRef.current = { targetPose: null, startTime: null };
+            }
+          }
           if(faceError) setFaceError(null);
         } else if (json.faceDetected && !json.pose) {
           console.warn("Face detected but no pose data returned.");
@@ -392,12 +443,15 @@ export default function UserRegistrationForm() {
     poseDataRef.current = null;
     setVerifying(false);
     setDetecting(false);
+    poseHistoryRef.current = [];
+    poseHoldStateRef.current = { targetPose: null, startTime: null };
   };
 
   const handleVerificationComplete = () => {
     if (faceVerified) {
       handleFlip("success", "right");
     } else {
+      console.warn("handleVerificationComplete called but faceVerified is not true.");
       handleFlip("completed", "left");
     }
   }
@@ -570,9 +624,17 @@ export default function UserRegistrationForm() {
 
               {requiredMovements.includes(livenessStage) && renderProgressIndicators()}
 
-               {(detecting || verifying) && livenessStage !== 'failed' && (
-                   <div className="mt-2 w-6 h-6 border-2 border-blue-200 border-t-blue-500 rounded-full animate-spin"></div>
-               )}
+              <div className="mt-2 h-6 flex items-center justify-center">
+                 {(detecting || (requiredMovements.includes(livenessStage) && poseHistoryRef.current.length < POSE_HISTORY_LENGTH)) && !verifying && livenessStage !== 'failed' && (
+                     <span className="text-xs text-blue-500">Analyzing...</span>
+                 )}
+                 {verifying && livenessStage !== 'failed' && (
+                      <div className="w-5 h-5 border-2 border-yellow-300 border-t-yellow-500 rounded-full animate-spin"></div>
+                 )}
+                  {poseHoldStateRef.current.targetPose === livenessStage && !verifying && livenessStage !== 'failed' && (
+                     <span className="text-xs text-green-600 font-medium">Hold pose...</span>
+                  )}
+              </div>
 
               {faceError && <p className="text-red-600 text-xs mt-2 px-2">{faceError}</p>}
 
