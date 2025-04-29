@@ -113,11 +113,21 @@ export default function UserRegistrationForm() {
   };
 
   const stopCamera = () => {
+    console.log("Attempting to stop camera. Current stream:", streamRef.current);
     const stream = streamRef.current;
     if (stream) {
-      stream.getTracks().forEach((track) => track.stop());
+      stream.getTracks().forEach((track) => {
+        console.log(`Stopping track: ${track.kind}, label: ${track.label}, state: ${track.readyState}`);
+        track.stop();
+      });
       streamRef.current = null;
+      console.log("Camera stream stopped and ref cleared.");
+    } else {
+      console.log("stopCamera called but no active stream found.");
     }
+    // Also clear video element source to be safe
+    if (videoRef.current) videoRef.current.srcObject = null;
+    if (faceVideoRef.current) faceVideoRef.current.srcObject = null;
   };
 
   const handleFormSubmit = () => {
@@ -347,6 +357,11 @@ export default function UserRegistrationForm() {
       setFaceError(null);
       interval = setInterval(() => {
         if (faceVideoRef.current && faceVideoRef.current.readyState >= 2 && faceCanvasRef.current) {
+          // --- Logging Video Status ---
+          const video = faceVideoRef.current;
+          console.log(`Liveness Polling (${livenessStage}): Video readyState=${video.readyState}, srcObject active=${video.srcObject?.active}`);
+          // --- End Logging ---
+
           const canvas = faceCanvasRef.current;
           const context = canvas.getContext("2d");
           const videoWidth = faceVideoRef.current.videoWidth;
