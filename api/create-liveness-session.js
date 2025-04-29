@@ -3,7 +3,7 @@ import { RekognitionClient, CreateFaceLivenessSessionCommand } from "@aws-sdk/cl
 // Initialize the Rekognition Client
 // Ensure your AWS region and credentials are configured correctly
 // For Vercel/Netlify, set environment variables (AWS_REGION, AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY)
-const client = new RekognitionClient({ region: process.env.AWS_REGION || "us-east-1" });
+const client = new RekognitionClient({ region: process.env.AWS_REGION || "eu-central-1" });
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
