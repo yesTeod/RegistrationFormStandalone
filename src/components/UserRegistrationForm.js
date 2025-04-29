@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from "react";
 import { Amplify } from 'aws-amplify';
-import { FaceLivenessDetector } from '@aws-amplify/ui-react';
+import { FaceLivenessDetector } from '@aws-amplify/ui-react-liveness';
 import '@aws-amplify/ui-react/styles.css';
 
 Amplify.configure({
