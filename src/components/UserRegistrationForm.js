@@ -291,7 +291,7 @@ export default function UserRegistrationForm() {
           const dataURL = canvas.toDataURL('image/jpeg', 0.7);
           detectFaceAndPoseOnServer(dataURL);
         }
-      }, 500);
+      }, 750);
     } else {
       console.log(`Liveness: Polling conditions not met or stopped. Step: ${step}, Stage: ${livenessStage}, Paused: ${faceDetectionPaused}`);
     }
