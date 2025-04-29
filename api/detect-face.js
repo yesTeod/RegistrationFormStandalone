@@ -36,6 +36,8 @@ export default async function handler(req, res) {
     let pose = null;
     let error = null;
     let confidence = null; // Optional: log confidence
+    let smile = null; // Add variable for smile
+    let eyesOpen = null; // Add variable for eyesOpen
 
     if (Array.isArray(response.FaceDetails) && response.FaceDetails.length > 0) {
         const primaryFace = response.FaceDetails[0];
@@ -44,13 +46,29 @@ export default async function handler(req, res) {
         // Check if confidence meets the threshold
         if (confidence >= MIN_FACE_CONFIDENCE) {
             faceDetected = true;
-            // Extract Pose only if confidence is sufficient
+            // Extract Pose, Smile, and EyesOpen only if confidence is sufficient
             if (primaryFace.Pose) {
                 pose = primaryFace.Pose; // Contains Yaw, Pitch, Roll
             } else {
                 console.warn(`Face detected with sufficient confidence (${confidence}%), but Pose data is missing.`);
-                error = "Pose data not available despite good detection"; 
+                // Don't set a blocking error here, maybe pose is not needed for all checks
             }
+            if (primaryFace.Smile) {
+                smile = primaryFace.Smile; // Contains Value (boolean) and Confidence
+            } else {
+                 console.warn(`Face detected with sufficient confidence (${confidence}%), but Smile data is missing.`);
+            }
+             if (primaryFace.EyesOpen) {
+                eyesOpen = primaryFace.EyesOpen; // Contains Value (boolean) and Confidence
+            } else {
+                 console.warn(`Face detected with sufficient confidence (${confidence}%), but EyesOpen data is missing.`);
+            }
+
+            // If core attributes are missing despite high confidence face detection, flag it
+            if (!primaryFace.Pose || !primaryFace.Smile || !primaryFace.EyesOpen) {
+                 error = "Face details incomplete despite good detection.";
+            }
+
         } else {
             // Confidence too low, treat as no detection for our purposes
             console.log(`Face detected but confidence (${confidence}%) below threshold (${MIN_FACE_CONFIDENCE}%).`);
@@ -63,7 +81,7 @@ export default async function handler(req, res) {
     }
 
     // Return the detection status and pose data
-    return res.status(200).json({ faceDetected, pose, confidence, error }); // Include confidence for potential debugging
+    return res.status(200).json({ faceDetected, pose, smile, eyesOpen, confidence, error }); // Include confidence, smile, eyesOpen for potential debugging
 
   } catch (err) {
     console.error('detect-face error:', err);
