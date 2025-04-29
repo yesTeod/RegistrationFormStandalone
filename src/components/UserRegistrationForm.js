@@ -338,40 +338,77 @@ export default function UserRegistrationForm() {
       if (!res.ok || json.error) {
         console.warn("Detection API error:", json.error || `HTTP ${res.status}`);
         setFacePresent(false);
-        faceDetailsRef.current = null;
+        faceDetailsRef.current = null; // Clear details on API/server error
         if (json.error && json.error !== faceError) setFaceError(json.error);
         else if (!json.error && res.status !== 200) setFaceError(`Detection failed (Status: ${res.status})`);
-        setLivenessFeedback(null);
+        setLivenessFeedback(null); // Clear feedback on error
 
-      } else {
-        setFacePresent(json.faceDetected);
-        // Store the entire relevant details block from the API response
-        faceDetailsRef.current = {
-           pose: json.pose,
-           smile: json.smile,
-           eyesOpen: json.eyesOpen,
-           confidence: json.confidence
-        };
+      } else { // res.ok is true
+        const currentFaceDetected = json.faceDetected;
+        setFacePresent(currentFaceDetected); // Update general presence state
 
-        if(json.faceDetected && faceDetailsRef.current) {
-          if(faceError) setFaceError(null);
-          if(livenessFeedback) setLivenessFeedback(null);
-          setDebugPollingStatus("Check Challenge");
-          checkLivenessChallenge(faceDetailsRef.current);
-        } else if (json.faceDetected && !faceDetailsRef.current) {
-          console.warn("Face detected but key details (pose/smile/eyes) are missing.");
-          setDebugPollingStatus("Warn: Details Missing");
-          faceDetailsRef.current = null;
-          if (requiredMovements.includes(livenessStage)) {
-             setLivenessFeedback("Face detected, but details unclear. Ensure face is fully visible & centered.");
-             setFaceError(null);
+        if(currentFaceDetected && json.pose && json.smile && json.eyesOpen) {
+          // Face detected with all necessary details
+          faceDetailsRef.current = {
+             pose: json.pose,
+             smile: json.smile,
+             eyesOpen: json.eyesOpen,
+             confidence: json.confidence
+          };
+          // Clear transient errors/feedback if we now detect a face properly
+          if(faceError === "No face detected. Please position your face clearly in the frame." || faceError?.startsWith("Face details incomplete")) {
+              setFaceError(null);
           }
-        } else {
+          if(livenessFeedback === "Face lost. Please reposition." || livenessFeedback === "Face details unclear. Ensure face is fully visible & centered.") {
+              setLivenessFeedback(null);
+          }
+          setDebugPollingStatus("Check Challenge (Details OK)");
+          checkLivenessChallenge(faceDetailsRef.current); // Check with fresh data
+
+        } else if (currentFaceDetected && (!json.pose || !json.smile || !json.eyesOpen)) {
+          // Face detected but key details are missing
+          console.warn(`Face detected (Conf: ${json.confidence?.toFixed(1)}%) but key details (pose/smile/eyes) are missing.`);
+          setDebugPollingStatus("Warn: Details Missing");
+          // Don't clear faceDetailsRef here - rely on previous good data if available
+          if (requiredMovements.includes(livenessStage) && !faceError) { // Avoid overwriting other errors
+             setLivenessFeedback("Face details unclear. Ensure face is fully visible & centered.");
+          }
+           // Still call checkLivenessChallenge, using existing details if available
+           if(faceDetailsRef.current) {
+                console.log("Calling checkLivenessChallenge with previous details due to missing current details.");
+                checkLivenessChallenge(faceDetailsRef.current);
+           } else {
+               console.log("Cannot call checkLivenessChallenge - missing details and no previous details available.");
+                if (requiredMovements.includes(livenessStage) && !faceError) {
+                    setFaceError("Face details incomplete. Adjust lighting or position.");
+                }
+           }
+
+        } else { // Face NOT detected by API (currentFaceDetected is false)
           setDebugPollingStatus("No Face Detected by API");
-          faceDetailsRef.current = null;
+          // *** CHANGE HERE: Don't clear faceDetailsRef during active stages ***
           if (requiredMovements.includes(livenessStage)) {
-            setFaceError("No face detected. Please position your face clearly in the frame.");
-            setLivenessFeedback(null);
+             // *** CHANGE HERE: Don't set blocking error, set feedback instead ***
+             // setFaceError("No face detected. Please position your face clearly in the frame."); // REMOVED
+            if (!faceError) { // Avoid overwriting other errors
+                 setLivenessFeedback("Face lost. Please reposition.");
+            }
+            console.log("Face not detected during active liveness stage, relying on previous details if available.");
+            // Still call checkLivenessChallenge - it will use the existing faceDetailsRef.current (if any)
+            // The timeout mechanism will eventually trigger if the face remains undetected.
+            if(faceDetailsRef.current) {
+                checkLivenessChallenge(faceDetailsRef.current);
+            } else {
+                // If there are no previous details either, then we truly can't proceed
+                console.log("Cannot call checkLivenessChallenge - face not detected and no previous details.");
+                 if (!faceError) {
+                     setFaceError("No face detected. Please position your face clearly in the frame.");
+                 }
+            }
+          } else {
+            // If not in an active challenge stage (e.g., 'idle', 'verifying'), it's okay to clear details if no face is detected
+             faceDetailsRef.current = null;
+             console.log("Face not detected and not in active challenge stage. Clearing details.");
           }
         }
       }
@@ -380,9 +417,9 @@ export default function UserRegistrationForm() {
       setDebugPollingStatus(`Network Error: ${e.message}`);
       setDebugLastError(`Network Error: ${e.message}`);
       setFacePresent(false);
-      faceDetailsRef.current = null;
+      faceDetailsRef.current = null; // Clear on network/fetch errors
       setFaceError('Network error connecting to detection service.');
-      setLivenessFeedback(null);
+      setLivenessFeedback(null); // Clear feedback on error
     } finally {
       setDetecting(false);
     }
