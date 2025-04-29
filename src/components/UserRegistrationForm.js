@@ -288,10 +288,10 @@ export default function UserRegistrationForm() {
             canvas.height = videoHeight || 240;
           }
           context.drawImage(faceVideoRef.current, 0, 0, canvas.width, canvas.height);
-          const dataURL = canvas.toDataURL('image/jpeg', 0.8);
+          const dataURL = canvas.toDataURL('image/jpeg', 0.7);
           detectFaceAndPoseOnServer(dataURL);
         }
-      }, 750);
+      }, 500);
     } else {
       console.log(`Liveness: Polling conditions not met or stopped. Step: ${step}, Stage: ${livenessStage}, Paused: ${faceDetectionPaused}`);
     }
@@ -548,7 +548,7 @@ export default function UserRegistrationForm() {
                 <div className="w-[180px] h-[220px] border-4 border-dashed border-yellow-400 rounded-[50%] opacity-75 shadow-md"></div>
              </div>
           )}
-          <video ref={faceVideoRef} autoPlay muted playsInline className="w-full h-full object-cover" />
+          <video ref={faceVideoRef} autoPlay muted playsInline className="w-full h-full object-cover flipped-video" />
           <canvas ref={faceCanvasRef} className="absolute top-0 left-0 opacity-0 pointer-events-none" width="320" height="240"/>
         </div>
 
@@ -557,6 +557,16 @@ export default function UserRegistrationForm() {
               <p className={`text-base font-medium mb-2 ${livenessStage === 'failed' || faceError ? 'text-red-600' : 'text-gray-800'}`}>
                  {getLivenessInstruction()}
               </p>
+
+              {requiredMovements.includes(livenessStage) && (
+                <div className="mt-1 mb-2 text-4xl text-blue-500">
+                  {livenessStage === 'center' && '◉' /* Center dot */} 
+                  {livenessStage === 'up' && '⬆️' /* Up arrow */} 
+                  {livenessStage === 'down' && '⬇️' /* Down arrow */} 
+                  {livenessStage === 'left' && '⬅️' /* Left arrow */} 
+                  {livenessStage === 'right' && '➡️' /* Right arrow */} 
+                </div>
+              )}
 
               {requiredMovements.includes(livenessStage) && renderProgressIndicators()}
 
@@ -664,7 +674,10 @@ export default function UserRegistrationForm() {
       ref={containerRef}
       className="p-6 max-w-md mx-auto bg-gradient-to-br from-gray-100 to-gray-300 rounded-3xl shadow-xl transition-transform duration-300 relative border border-gray-300 will-change-transform"
     >
-      <style>{`button { border-radius: 10px !important; }`}</style>
+       <style>{`
+         button { border-radius: 10px !important; }
+         .flipped-video { transform: scaleX(-1); }
+       `}</style>
       {step === "form" && (
         <div className="space-y-4">
           <h2 className="text-2xl font-semibold text-gray-800">Register</h2>
