@@ -28,6 +28,10 @@ export default function UserRegistrationForm() {
   const POSE_HOLD_DURATION = 500; // ms to hold the pose
   const POSE_STAGE_TIMEOUT = 15000; // ms before stage times out
 
+  // State for visual debugging on mobile
+  const [debugReadyState, setDebugReadyState] = useState(null);
+  const [debugStreamActive, setDebugStreamActive] = useState(null);
+
   const [livenessStage, setLivenessStage] = useState('idle');
   const [livenessProgress, setLivenessProgress] = useState({
     center: false,
@@ -357,22 +361,31 @@ export default function UserRegistrationForm() {
       setFaceError(null);
       interval = setInterval(() => {
         if (faceVideoRef.current && faceVideoRef.current.readyState >= 2 && faceCanvasRef.current) {
-          // --- Logging Video Status ---
           const video = faceVideoRef.current;
-          console.log(`Liveness Polling (${livenessStage}): Video readyState=${video.readyState}, srcObject active=${video.srcObject?.active}`);
-          // --- End Logging ---
+          const currentReadyState = video.readyState;
+          const currentStreamActive = !!(video.srcObject?.active);
 
-          const canvas = faceCanvasRef.current;
-          const context = canvas.getContext("2d");
-          const videoWidth = faceVideoRef.current.videoWidth;
-          const videoHeight = faceVideoRef.current.videoHeight;
-          if (canvas.width !== videoWidth || canvas.height !== videoHeight) {
-            canvas.width = videoWidth || 320;
-            canvas.height = videoHeight || 240;
+          // Update debug states if they changed
+          setDebugReadyState(currentReadyState);
+          setDebugStreamActive(currentStreamActive);
+
+          // Log status (will still work on desktop, useful backup)
+          console.log(`Liveness Polling (${livenessStage}): Video readyState=${currentReadyState}, srcObject active=${currentStreamActive}`);
+
+          // Only proceed with drawing/detection if video is ready
+          if (currentReadyState >= 2) { 
+            const canvas = faceCanvasRef.current;
+            const context = canvas.getContext("2d");
+            const videoWidth = faceVideoRef.current.videoWidth;
+            const videoHeight = faceVideoRef.current.videoHeight;
+            if (canvas.width !== videoWidth || canvas.height !== videoHeight) {
+              canvas.width = videoWidth || 320;
+              canvas.height = videoHeight || 240;
+            }
+            context.drawImage(faceVideoRef.current, 0, 0, canvas.width, canvas.height);
+            const dataURL = canvas.toDataURL('image/jpeg', 0.8);
+            detectFaceAndPoseOnServer(dataURL);
           }
-          context.drawImage(faceVideoRef.current, 0, 0, canvas.width, canvas.height);
-          const dataURL = canvas.toDataURL('image/jpeg', 0.8);
-          detectFaceAndPoseOnServer(dataURL);
         }
       }, 750);
     } else {
@@ -657,6 +670,12 @@ export default function UserRegistrationForm() {
           <video ref={faceVideoRef} autoPlay muted playsInline className="w-full h-full object-cover" />
           <canvas ref={faceCanvasRef} className="absolute top-0 left-0 opacity-0 pointer-events-none" width="320" height="240"/>
         </div>
+
+        {/* --- Visual Debug Info --- */}
+        <div className="text-xs text-gray-500 text-center mt-1">
+            Cam Status: RS={debugReadyState ?? 'N/A'}, Active={debugStreamActive === null ? 'N/A' : String(debugStreamActive)}
+        </div>
+        {/* --- End Debug Info --- */}
 
         {faceVerified !== true && (
            <div className="text-sm min-h-[100px] flex flex-col justify-center items-center bg-gray-50 p-3 rounded-lg border border-gray-200">
