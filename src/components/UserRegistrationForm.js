@@ -340,13 +340,16 @@ export default function UserRegistrationForm() {
             console.warn("Received non-numeric pose data:", json.pose);
           }
           
-          console.log(`[Liveness RAW] Stage: ${livenessStage}, Yaw: ${json.pose.Yaw?.toFixed(2)}, Pitch: ${json.pose.Pitch?.toFixed(2)}`);
+          // Safer logging: Check if Yaw/Pitch are numbers before calling toFixed
+          const rawYaw = typeof json.pose.Yaw === 'number' ? json.pose.Yaw.toFixed(2) : 'N/A';
+          const rawPitch = typeof json.pose.Pitch === 'number' ? json.pose.Pitch.toFixed(2) : 'N/A';
+          console.log(`[Liveness RAW] Stage: ${livenessStage}, Yaw: ${rawYaw}, Pitch: ${rawPitch}`);
           
           const smoothed = getSmoothedPose();
-          if (smoothed) {
-            console.log(`[Liveness SMOOTHED] Stage: ${livenessStage}, Yaw: ${smoothed.Yaw.toFixed(2)}, Pitch: ${smoothed.Pitch.toFixed(2)}`);
+          if (smoothed && typeof smoothed.Yaw === 'number' && typeof smoothed.Pitch === 'number') {
             checkLivenessPose(smoothed);
-          } else {
+          } else if (smoothed.confidence === 'calculating') {
+            setPoseConfidence('calculating');
             if(poseHoldStateRef.current.targetPose) {
               poseHoldStateRef.current = { targetPose: null, startTime: null };
             }
