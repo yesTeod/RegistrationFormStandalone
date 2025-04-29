@@ -366,10 +366,15 @@ export default function UserRegistrationForm() {
         }
       }
     } catch (e) {
-      console.error("Network error during detection:", e);
+      console.error("Error during detectFaceAndPoseOnServer fetch:", e);
       setFacePresent(false);
       poseDataRef.current = null;
-      setFaceError('Network error connecting to detection service.');
+      let detailedError = `Detection Error: ${e.name || 'UnknownError'} - ${e.message || 'No details'}`;
+      if (detailedError.length > 100) {
+        detailedError = detailedError.substring(0, 97) + "...";
+      }
+      setFaceError(detailedError);
+      setPoseConfidence('low');
     } finally {
       setDetecting(false);
     }
