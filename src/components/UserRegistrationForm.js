@@ -34,7 +34,8 @@ export default function UserRegistrationForm() {
   const poseHistoryRef = useRef([]);
   const POSE_HISTORY_LENGTH = 3;
   const poseHoldStateRef = useRef({ targetPose: null, startTime: null });
-  const POSE_HOLD_DURATION = 300;
+  const POSE_HOLD_DURATION = 200;
+  const [isInTargetZone, setIsInTargetZone] = useState(false);
 
   const videoRef = useRef(null);
   const faceVideoRef = useRef(null);
@@ -188,38 +189,46 @@ export default function UserRegistrationForm() {
     const YAW_THRESHOLD = 18;
     const PITCH_THRESHOLD = 18;
     const CENTER_THRESHOLD = 8;
-
-    if (typeof yaw !== 'number' || typeof pitch !== 'number') {
-      console.warn("Invalid smoothed pose data:", smoothedPose);
-      return;
-    }
+    const YAW_HYSTERESIS = 5;
+    const PITCH_HYSTERESIS = 5;
+    const CENTER_HYSTERESIS = 3;
 
     let targetPoseMet = null;
+    let currentThresholdMet = false;
+
+    const activeYawThresh = isInTargetZone ? YAW_THRESHOLD + YAW_HYSTERESIS : YAW_THRESHOLD;
+    const activePitchThresh = isInTargetZone ? PITCH_THRESHOLD + PITCH_HYSTERESIS : PITCH_THRESHOLD;
+    const activeCenterThresh = isInTargetZone ? CENTER_THRESHOLD + CENTER_HYSTERESIS : CENTER_THRESHOLD;
 
     switch (livenessStage) {
       case 'center':
-        if (Math.abs(yaw) < CENTER_THRESHOLD && Math.abs(pitch) < CENTER_THRESHOLD) targetPoseMet = 'center';
+        if (Math.abs(yaw) < activeCenterThresh && Math.abs(pitch) < activeCenterThresh) targetPoseMet = 'center';
+        if (Math.abs(yaw) < CENTER_THRESHOLD && Math.abs(pitch) < CENTER_THRESHOLD) currentThresholdMet = true;
         break;
       case 'up':
-        if (pitch < -PITCH_THRESHOLD && Math.abs(yaw) < YAW_THRESHOLD) targetPoseMet = 'up';
+        if (pitch < -(activePitchThresh) && Math.abs(yaw) < activeYawThresh + 5) targetPoseMet = 'up';
+        if (pitch < -PITCH_THRESHOLD && Math.abs(yaw) < YAW_THRESHOLD) currentThresholdMet = true;
         break;
       case 'down':
-        if (pitch > PITCH_THRESHOLD && Math.abs(yaw) < YAW_THRESHOLD) targetPoseMet = 'down';
+        if (pitch > activePitchThresh && Math.abs(yaw) < activeYawThresh + 5) targetPoseMet = 'down';
+        if (pitch > PITCH_THRESHOLD && Math.abs(yaw) < YAW_THRESHOLD) currentThresholdMet = true;
         break;
       case 'left':
-        if (yaw > YAW_THRESHOLD && Math.abs(pitch) < PITCH_THRESHOLD + 5) targetPoseMet = 'left';
+        if (yaw > activeYawThresh && Math.abs(pitch) < activePitchThresh + 8) targetPoseMet = 'left';
+        if (yaw > YAW_THRESHOLD && Math.abs(pitch) < PITCH_THRESHOLD + 5) currentThresholdMet = true;
         break;
       case 'right':
-        if (yaw < -YAW_THRESHOLD && Math.abs(pitch) < PITCH_THRESHOLD + 5) targetPoseMet = 'right';
+        if (yaw < -(activeYawThresh) && Math.abs(pitch) < activePitchThresh + 8) targetPoseMet = 'right';
+        if (yaw < -YAW_THRESHOLD && Math.abs(pitch) < PITCH_THRESHOLD + 5) currentThresholdMet = true;
         break;
       default:
         break;
     }
 
-    console.log(`[Liveness CHECK] Stage: ${livenessStage}, Smoothed Yaw: ${yaw.toFixed(2)}, Pitch: ${pitch.toFixed(2)}, Target Met: ${targetPoseMet}`);
+    setIsInTargetZone(targetPoseMet === livenessStage);
 
     const now = Date.now();
-    if (targetPoseMet === livenessStage) {
+    if (currentThresholdMet) {
       if (poseHoldStateRef.current.targetPose === livenessStage) {
         if (now - poseHoldStateRef.current.startTime >= POSE_HOLD_DURATION) {
           console.log(`Liveness: Pose "${livenessStage}" held successfully.`);
@@ -227,6 +236,7 @@ export default function UserRegistrationForm() {
           setFaceError(null);
           poseHoldStateRef.current = { targetPose: null, startTime: null };
           poseHistoryRef.current = [];
+          setIsInTargetZone(false);
 
           const currentIndex = requiredMovements.indexOf(livenessStage);
           const nextIndex = currentIndex + 1;
@@ -245,6 +255,7 @@ export default function UserRegistrationForm() {
       } else {
         console.log(`Liveness: Started holding target pose: ${livenessStage}`);
         poseHoldStateRef.current = { targetPose: livenessStage, startTime: now };
+        setIsInTargetZone(true);
       }
     } else {
       if (poseHoldStateRef.current.targetPose) {
@@ -347,7 +358,7 @@ export default function UserRegistrationForm() {
           const dataURL = canvas.toDataURL('image/jpeg', 0.7);
           detectFaceAndPoseOnServer(dataURL);
         }
-      }, 1250);
+      }, 600);
     } else {
       console.log(`Liveness: Polling conditions not met or stopped. Step: ${step}, Stage: ${livenessStage}, Paused: ${faceDetectionPaused}`);
     }
@@ -450,6 +461,7 @@ export default function UserRegistrationForm() {
     setDetecting(false);
     poseHistoryRef.current = [];
     poseHoldStateRef.current = { targetPose: null, startTime: null };
+    setIsInTargetZone(false);
   };
 
   const handleVerificationComplete = () => {
@@ -636,8 +648,10 @@ export default function UserRegistrationForm() {
                  {verifying && livenessStage !== 'failed' && (
                       <div className="w-5 h-5 border-2 border-yellow-300 border-t-yellow-500 rounded-full animate-spin"></div>
                  )}
-                  {poseHoldStateRef.current.targetPose === livenessStage && !verifying && livenessStage !== 'failed' && (
-                     <span className="text-xs text-green-600 font-medium">Hold pose...</span>
+                  {isInTargetZone && !verifying && livenessStage !== 'failed' && (
+                     <span className={`text-sm font-semibold ${poseHoldStateRef.current.targetPose === livenessStage ? 'text-green-600 animate-pulse' : 'text-blue-600'}`}>
+                        {poseHoldStateRef.current.targetPose === livenessStage ? 'Hold...' : 'Detected!'}
+                     </span>
                   )}
               </div>
 
