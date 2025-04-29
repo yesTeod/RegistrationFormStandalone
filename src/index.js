@@ -1,7 +1,7 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client'; // Or 'react-dom' for older React versions
 import './styles.css'; // Assuming you have global styles
-import App from './App';
+import App from './App.js';
 import { Amplify } from 'aws-amplify';
 
 // --- Add Amplify Configuration Here --- 
