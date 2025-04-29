@@ -32,7 +32,7 @@ export default function UserRegistrationForm() {
   const requiredMovements = ['center', 'up', 'down', 'left', 'right'];
   const poseDataRef = useRef(null);
   const poseHistoryRef = useRef([]);
-  const POSE_HISTORY_LENGTH = 3;
+  const POSE_HISTORY_LENGTH = 5;
   const poseHoldStateRef = useRef({ targetPose: null, startTime: null });
   const POSE_HOLD_DURATION = 200;
   const [isInTargetZone, setIsInTargetZone] = useState(false);
@@ -358,7 +358,7 @@ export default function UserRegistrationForm() {
           const dataURL = canvas.toDataURL('image/jpeg', 0.7);
           detectFaceAndPoseOnServer(dataURL);
         }
-      }, 600);
+      }, 1250);
     } else {
       console.log(`Liveness: Polling conditions not met or stopped. Step: ${step}, Stage: ${livenessStage}, Paused: ${faceDetectionPaused}`);
     }
