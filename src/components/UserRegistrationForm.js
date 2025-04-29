@@ -12,12 +12,12 @@ Amplify.configure({
     // If using unauthenticated identities, you might need:
     identityPoolId: 'eu-central-1:04cbf64c-4d6f-44e9-abe9-46466f2a0e39', 
   },
-  geo: {
-    AmazonLocationService: { // Example structure if using Geo
-       region: awsRegion
-       // other geo configs...
-    }
-  },
+  // geo: {
+  //   AmazonLocationService: { // Example structure if using Geo
+  //      region: awsRegion
+  //      // other geo configs...
+  //   }
+  // },
   Predictions: {
      // Configuration for Predictions category if needed
   },
