@@ -1,7 +1,7 @@
 import { RekognitionClient, GetFaceLivenessSessionResultsCommand } from "@aws-sdk/client-rekognition";
 
 // Initialize the Rekognition Client (ensure region and credentials are configured)
-const client = new RekognitionClient({ region: process.env.AWS_REGION || "us-east-1" });
+const client = new RekognitionClient({ region: process.env.AWS_REGION || "eu-central-1" });
 
 export default async function handler(req, res) {
   // Use GET and expect sessionId as a query parameter
