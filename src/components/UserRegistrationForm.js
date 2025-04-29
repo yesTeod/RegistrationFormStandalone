@@ -42,6 +42,7 @@ export default function UserRegistrationForm() {
   const EYES_OPEN_CONFIDENCE_THRESHOLD = 75;
 
   const [livenessStage, setLivenessStage] = useState('idle');
+  const [livenessStageStartTime, setLivenessStageStartTime] = useState(null); // For stage timeout
   const [livenessProgress, setLivenessProgress] = useState({
     center: false,
     blink: false,
@@ -195,30 +196,32 @@ export default function UserRegistrationForm() {
   };
 
   const checkLivenessChallenge = (details) => {
-    if (!details || livenessStage === 'idle' || livenessStage === 'verifying' || livenessStage === 'complete' || livenessStage === 'failed') return;
+    // Check if conditions are met to process the challenge
+    if (!details || !requiredMovements.includes(livenessStage) || faceDetectionPaused || verifying) {
+        return;
+    }
 
-    // Clear feedback/error at the start of each check cycle
-    setLivenessFeedback(null);
-    setFaceError(null);
+    // Clear feedback/error at the start of each check cycle unless already failed
+    if(livenessStage !== 'failed') {
+        setLivenessFeedback(null);
+        setFaceError(null);
+    }
 
     // --- Check for stage timeout ---
-    if (poseStartTime && (Date.now() - poseStartTime > POSE_STAGE_TIMEOUT)) {
+    if (livenessStageStartTime && (Date.now() - livenessStageStartTime > POSE_STAGE_TIMEOUT)) {
       console.warn(`Liveness: Timeout on stage: ${livenessStage}`);
-      setFaceError(`Timeout: Could not detect '${livenessStage}' action in time.`);
+      setFaceError(`Timeout: Could not complete '${livenessStage}' action in time.`);
       setLivenessStage('failed');
-      setFaceDetectionPaused(true);
+      setFaceDetectionPaused(true); // Pause detection on timeout failure
       setShowRetryOptions(true);
-      clearTimeout(poseHoldTimer);
-      setPoseHoldTimer(null);
-      setPoseStartTime(null);
+      setLivenessStageStartTime(null); // Reset timer
       return;
     }
     // --- End Timeout Check ---
 
     const { Pose: pose, Smile: smile, EyesOpen: eyesOpen } = details;
-    const YAW_THRESHOLD = 15;
-    const PITCH_THRESHOLD = 15;
-    const NEAR_THRESHOLD_FACTOR = 0.5;
+    const YAW_THRESHOLD = 15; // Relaxed threshold
+    const PITCH_THRESHOLD = 15; // Relaxed threshold
 
     let isChallengeMet = false;
     let feedbackMsg = null;
@@ -228,73 +231,74 @@ export default function UserRegistrationForm() {
         if (!pose || typeof pose.Yaw !== 'number' || typeof pose.Pitch !== 'number') {
             console.warn("Invalid pose data received for center check:", pose);
             setFaceError("Could not read head pose. Try adjusting lighting or position.");
-            if (poseHoldTimer) clearTimeout(poseHoldTimer);
-            setPoseHoldTimer(null);
+            // No timer to clear here
             return;
         }
         const { Yaw: yaw, Pitch: pitch } = pose;
-        if (Math.abs(yaw) < 7 && Math.abs(pitch) < 7) isChallengeMet = true;
-        else feedbackMsg = "Keep looking straight ahead.";
-
+        // Use relaxed thresholds
+        if (Math.abs(yaw) < YAW_THRESHOLD && Math.abs(pitch) < PITCH_THRESHOLD) {
+             isChallengeMet = true;
+             console.log(`Liveness: 'center' met (Yaw: ${yaw.toFixed(1)}, Pitch: ${pitch.toFixed(1)})`);
+        } else {
+            feedbackMsg = "Keep looking straight ahead.";
+            console.log(`Liveness: 'center' NOT met (Yaw: ${yaw.toFixed(1)}, Pitch: ${pitch.toFixed(1)})`);
+        }
     } else if (livenessStage === 'blink') {
         if (!eyesOpen || typeof eyesOpen.Value !== 'boolean' || typeof eyesOpen.Confidence !== 'number') {
             console.warn("Invalid eyesOpen data received:", eyesOpen);
             setFaceError("Could not detect eye status. Adjust lighting or position.");
-            if (poseHoldTimer) clearTimeout(poseHoldTimer);
-            setPoseHoldTimer(null);
+            // No timer to clear
             return;
         }
         // We want to detect the closed state (Value: false) with sufficient confidence
         if (eyesOpen.Value === false && eyesOpen.Confidence >= EYES_OPEN_CONFIDENCE_THRESHOLD) {
             isChallengeMet = true;
+            console.log(`Liveness: 'blink' met (EyesClosed: ${!eyesOpen.Value}, Conf: ${eyesOpen.Confidence.toFixed(1)})`);
         } else {
              feedbackMsg = "Blink both eyes fully.";
+             console.log(`Liveness: 'blink' NOT met (EyesClosed: ${!eyesOpen.Value}, Conf: ${eyesOpen.Confidence.toFixed(1)})`);
         }
     } else if (livenessStage === 'smile') {
         if (!smile || typeof smile.Value !== 'boolean' || typeof smile.Confidence !== 'number') {
              console.warn("Invalid smile data received:", smile);
             setFaceError("Could not detect smile status. Adjust lighting or position.");
-            if (poseHoldTimer) clearTimeout(poseHoldTimer);
-            setPoseHoldTimer(null);
+            // No timer to clear
             return;
         }
         // We want to detect the smiling state (Value: true) with sufficient confidence
         if (smile.Value === true && smile.Confidence >= SMILE_CONFIDENCE_THRESHOLD) {
             isChallengeMet = true;
+             console.log(`Liveness: 'smile' met (Smiling: ${smile.Value}, Conf: ${smile.Confidence.toFixed(1)})`);
         } else {
              feedbackMsg = "Smile naturally.";
+             console.log(`Liveness: 'smile' NOT met (Smiling: ${smile.Value}, Conf: ${smile.Confidence.toFixed(1)})`);
         }
     }
 
-
     if (isChallengeMet) {
-        console.log(`Liveness: Correct action detected for ${livenessStage}. Proceeding immediately.`);
+        console.log(`Liveness: Correct action detected for ${livenessStage}. Advancing.`);
         setLivenessProgress(prev => ({ ...prev, [livenessStage]: true }));
-        setFaceError(null);
-        setLivenessFeedback(null);
-        if (poseHoldTimer) clearTimeout(poseHoldTimer);
-        setPoseHoldTimer(null);
-        setPoseStartTime(null);
+        setFaceError(null); // Clear any previous error on success
+        setLivenessFeedback(null); // Clear feedback on success
+        setLivenessStageStartTime(null); // Clear timer for the completed stage
 
         const currentIndex = requiredMovements.indexOf(livenessStage);
         const nextIndex = currentIndex + 1;
 
         if (nextIndex < requiredMovements.length) {
-            setLivenessStage(requiredMovements[nextIndex]);
-            setPoseStartTime(Date.now());
+            const nextStage = requiredMovements[nextIndex];
+            setLivenessStage(nextStage);
+            setLivenessStageStartTime(Date.now()); // Start timer for the next stage
+            console.log(`Liveness: Moved to stage '${nextStage}'. Timer started.`);
         } else {
-            console.log("Liveness: All movements detected.");
-            setFaceDetectionPaused(true);
+            console.log("Liveness: All movements detected. Pausing detection and starting verification.");
+            setFaceDetectionPaused(true); // Pause detection before verification
             setLivenessStage('verifying');
-            captureAndVerify();
+            captureAndVerify(); // Proceed to final capture and verification
         }
     } else {
-        if (poseHoldTimer) {
-            console.log(`Liveness: Action incorrect for ${livenessStage}, clearing any previous hold timer.`);
-            clearTimeout(poseHoldTimer);
-            setPoseHoldTimer(null);
-        }
-        if (feedbackMsg) {
+        // If the challenge wasn't met, provide feedback if available
+        if (feedbackMsg && !faceError) { // Only show feedback if no major error exists
             setLivenessFeedback(feedbackMsg);
         }
     }
@@ -302,16 +306,26 @@ export default function UserRegistrationForm() {
 
   const detectFaceAndPoseOnServer = async (dataURL) => {
     const now = Date.now();
-    if (detecting || now - lastDetectionTime.current < 1000 || faceDetectionPaused || livenessStage === 'idle' || livenessStage === 'verifying' || livenessStage === 'complete' || livenessStage === 'failed') {
+    if (detecting || now - lastDetectionTime.current < 1000 || faceDetectionPaused || !requiredMovements.includes(livenessStage)) {
        if (detecting) {
             console.log("Detection already in progress. Skipping new request.");
-            setDebugPollingStatus("Polling: Skipped (Detection Active)"); // Debug update
+            setDebugPollingStatus("Polling: Skipped (Detection Active)");
+       } else if (now - lastDetectionTime.current < 1000) {
+           console.log("Detection throttled. Skipping new request.");
+           setDebugPollingStatus("Polling: Skipped (Throttled)");
+       } else if (faceDetectionPaused) {
+           console.log("Detection paused. Skipping new request.");
+           setDebugPollingStatus("Polling: Skipped (Paused)");
+       } else if (!requiredMovements.includes(livenessStage)) {
+            console.log(`Detection not needed for stage: ${livenessStage}. Skipping.`);
+            setDebugPollingStatus(`Polling: Skipped (Stage: ${livenessStage})`);
        }
       return;
     }
 
     setDetecting(true);
     lastDetectionTime.current = now;
+    setDebugPollingStatus("Polling: Sending Request..."); // Indicate request is being sent
 
     try {
       const res = await fetch('/api/detect-face', {
@@ -428,7 +442,7 @@ export default function UserRegistrationForm() {
             setDebugIntervalStatus(`Interval: Refs Not Ready (Vid: ${!!faceVideoRef.current}, Can: ${!!faceCanvasRef.current})`);
             setDebugPollingStatus("Polling: Refs Not Ready");
         }
-      }, 750);
+      }, 1000); // Adjusted interval to 1000ms to match debounce logic
     } else {
       console.log(`Liveness EFFECT: Conditions NOT met or polling stopped. Step: ${step}, Stage: ${livenessStage}, Paused: ${faceDetectionPaused}, IsActiveLiveness: ${isActiveLiveness}`);
       setDebugEffectStatus(`Effect: Conditions NOT Met (Step: ${step}, Stage: ${livenessStage}, Paused: ${faceDetectionPaused}, Active: ${isActiveLiveness})`);
@@ -534,6 +548,7 @@ export default function UserRegistrationForm() {
     lastDetectionTime.current = 0;
     setLivenessProgress({ center: false, blink: false, smile: false });
     setLivenessStage('center');
+    setLivenessStageStartTime(Date.now()); // Start the timer for the first stage
     setFaceError(null);
     faceDetailsRef.current = null;
     setLivenessFeedback(null);
@@ -544,10 +559,8 @@ export default function UserRegistrationForm() {
     setDebugIntervalStatus("Reset on Retry");
     setDebugPollingStatus("Reset on Retry");
     setDebugLastError(null);
-    // Clear and reset timers
-    if (poseHoldTimer) clearTimeout(poseHoldTimer);
-    setPoseHoldTimer(null);
-    setPoseStartTime(Date.now());
+    // Clear and reset timers - Only stage timer now
+    setLivenessStageStartTime(Date.now());
 
     // Explicitly restart the camera for the retry
     console.log("Restarting camera for retry...");
@@ -664,14 +677,11 @@ export default function UserRegistrationForm() {
     // --- Component Cleanup Effect ---
     return () => {
       stopCamera(); // Ensure camera stops on unmount
-      // Clear any running timers
-      if (poseHoldTimer) {
-         clearTimeout(poseHoldTimer);
-         console.log("Cleanup: Cleared pose hold timer.");
-      }
-      // No need to clear the interval here as the polling effect's cleanup does that
+      // No poseHoldTimer to clear now
+      // The polling interval is cleared by its own effect's cleanup
+      console.log("Component Unmounting: Camera stopped.");
     };
-  }, [poseHoldTimer]); // Add poseHoldTimer dependency
+  }, []); // Removed poseHoldTimer dependency
 
   const renderVerificationStepContent = () => {
     const getLivenessInstruction = () => {
@@ -844,13 +854,13 @@ export default function UserRegistrationForm() {
               onClick={() => {
                  setLivenessStage('center');
                  setFaceDetectionPaused(false);
-                 setPoseStartTime(Date.now());
+                 setLivenessStageStartTime(Date.now()); // Start timer for the 'center' stage
                  setFaceError(null);
                  setLivenessFeedback(null);
-                 if (poseHoldTimer) clearTimeout(poseHoldTimer);
-                 setPoseHoldTimer(null);
-                 setShowRetryOptions(false);
-                 setLivenessProgress({ center: false, blink: false, smile: false });
+                 // No poseHoldTimer to clear
+                 setShowRetryOptions(false); // Hide retry options when starting
+                 setLivenessProgress({ center: false, blink: false, smile: false }); // Reset progress indicators
+                 console.log("Liveness: Start button clicked. Moved to stage 'center'. Timer started.");
               }}
               className="px-6 py-3 bg-yellow-500 hover:bg-yellow-400 text-black rounded-full shadow-md font-semibold text-lg transition-all duration-200 ease-in-out transform hover:scale-105"
             >
