@@ -21,6 +21,8 @@ export default function UserRegistrationForm() {
   const [showRetryOptions, setShowRetryOptions] = useState(false);
   const [faceDetectionPaused, setFaceDetectionPaused] = useState(false);
 
+  const [livenessFeedback, setLivenessFeedback] = useState(null);
+
   const [livenessStage, setLivenessStage] = useState('idle');
   const [livenessProgress, setLivenessProgress] = useState({
     center: false,
@@ -164,9 +166,13 @@ export default function UserRegistrationForm() {
   const checkLivenessPose = (pose) => {
     if (!pose || livenessStage === 'idle' || livenessStage === 'verifying' || livenessStage === 'complete' || livenessStage === 'failed') return;
 
+    setLivenessFeedback(null);
+    setFaceError(null);
+
     const { Yaw: yaw, Pitch: pitch } = pose;
     const YAW_THRESHOLD = 15;
     const PITCH_THRESHOLD = 15;
+    const NEAR_THRESHOLD_FACTOR = 0.5;
 
     if (typeof yaw !== 'number' || typeof pitch !== 'number') {
       console.warn("Invalid pose data received:", pose);
@@ -175,22 +181,59 @@ export default function UserRegistrationForm() {
     }
 
     let currentMoveSatisfied = false;
+    let feedbackMsg = null;
 
     switch (livenessStage) {
       case 'center':
-        if (Math.abs(yaw) < 7 && Math.abs(pitch) < 7) currentMoveSatisfied = true;
+        if (Math.abs(yaw) < 7 && Math.abs(pitch) < 7) {
+             currentMoveSatisfied = true;
+        } else {
+            feedbackMsg = "Keep looking straight ahead.";
+        }
         break;
       case 'up':
-        if (pitch < -PITCH_THRESHOLD && Math.abs(yaw) < YAW_THRESHOLD) currentMoveSatisfied = true;
+        if (pitch < -PITCH_THRESHOLD && Math.abs(yaw) < YAW_THRESHOLD) {
+             currentMoveSatisfied = true;
+        } else if (pitch < -PITCH_THRESHOLD * NEAR_THRESHOLD_FACTOR && Math.abs(yaw) < YAW_THRESHOLD * 1.5) {
+             feedbackMsg = "Tilt head up a bit more.";
+        } else if (Math.abs(yaw) >= YAW_THRESHOLD) {
+             feedbackMsg = "Keep head centered while tilting up.";
+        } else {
+             feedbackMsg = "Slowly tilt head upwards.";
+        }
         break;
       case 'down':
-        if (pitch > PITCH_THRESHOLD && Math.abs(yaw) < YAW_THRESHOLD) currentMoveSatisfied = true;
+        if (pitch > PITCH_THRESHOLD && Math.abs(yaw) < YAW_THRESHOLD) {
+            currentMoveSatisfied = true;
+        } else if (pitch > PITCH_THRESHOLD * NEAR_THRESHOLD_FACTOR && Math.abs(yaw) < YAW_THRESHOLD * 1.5) {
+            feedbackMsg = "Tilt head down a bit more.";
+        } else if (Math.abs(yaw) >= YAW_THRESHOLD) {
+            feedbackMsg = "Keep head centered while tilting down.";
+        } else {
+            feedbackMsg = "Slowly tilt head downwards.";
+        }
         break;
       case 'left':
-        if (yaw > YAW_THRESHOLD && Math.abs(pitch) < PITCH_THRESHOLD) currentMoveSatisfied = true;
+        if (yaw > YAW_THRESHOLD && Math.abs(pitch) < PITCH_THRESHOLD) {
+             currentMoveSatisfied = true;
+        } else if (yaw > YAW_THRESHOLD * NEAR_THRESHOLD_FACTOR && Math.abs(pitch) < PITCH_THRESHOLD * 1.5) {
+             feedbackMsg = "Turn head left a bit more.";
+        } else if (Math.abs(pitch) >= PITCH_THRESHOLD) {
+             feedbackMsg = "Keep head level while turning left.";
+        } else {
+             feedbackMsg = "Slowly turn head to your left.";
+        }
         break;
       case 'right':
-        if (yaw < -YAW_THRESHOLD && Math.abs(pitch) < PITCH_THRESHOLD) currentMoveSatisfied = true;
+        if (yaw < -YAW_THRESHOLD && Math.abs(pitch) < PITCH_THRESHOLD) {
+             currentMoveSatisfied = true;
+        } else if (yaw < -YAW_THRESHOLD * NEAR_THRESHOLD_FACTOR && Math.abs(pitch) < PITCH_THRESHOLD * 1.5) {
+             feedbackMsg = "Turn head right a bit more.";
+        } else if (Math.abs(pitch) >= PITCH_THRESHOLD) {
+             feedbackMsg = "Keep head level while turning right.";
+        } else {
+             feedbackMsg = "Slowly turn head to your right.";
+        }
         break;
       default:
         break;
@@ -200,6 +243,7 @@ export default function UserRegistrationForm() {
       console.log(`Liveness: Detected movement for stage: ${livenessStage}`);
       setLivenessProgress(prev => ({ ...prev, [livenessStage]: true }));
       setFaceError(null);
+      setLivenessFeedback(null);
 
       const currentIndex = requiredMovements.indexOf(livenessStage);
       const nextIndex = currentIndex + 1;
@@ -214,6 +258,8 @@ export default function UserRegistrationForm() {
         setLivenessStage('verifying');
         captureAndVerify();
       }
+    } else if (feedbackMsg) {
+        setLivenessFeedback(feedbackMsg);
     }
   };
 
@@ -240,23 +286,27 @@ export default function UserRegistrationForm() {
         poseDataRef.current = null;
         if (json.error && json.error !== faceError) setFaceError(json.error);
         else if (!json.error && res.status !== 200) setFaceError(`Detection failed (Status: ${res.status})`);
+        setLivenessFeedback(null);
 
       } else {
         setFacePresent(json.faceDetected);
         if(json.faceDetected && json.pose) {
           poseDataRef.current = json.pose;
-          checkLivenessPose(json.pose);
           if(faceError) setFaceError(null);
+          if(livenessFeedback) setLivenessFeedback(null);
+          checkLivenessPose(json.pose);
         } else if (json.faceDetected && !json.pose) {
           console.warn("Face detected but no pose data returned.");
           poseDataRef.current = null;
           if (requiredMovements.includes(livenessStage)) {
-            setFaceError("Could not determine head pose.");
+            setLivenessFeedback("Face detected, pose unclear. Ensure face is fully visible & centered.");
+            setFaceError(null);
           }
         } else {
           poseDataRef.current = null;
           if (requiredMovements.includes(livenessStage)) {
             setFaceError("No face detected. Please position your face clearly in the frame.");
+            setLivenessFeedback(null);
           }
         }
       }
@@ -265,6 +315,7 @@ export default function UserRegistrationForm() {
       setFacePresent(false);
       poseDataRef.current = null;
       setFaceError('Network error connecting to detection service.');
+      setLivenessFeedback(null);
     } finally {
       setDetecting(false);
     }
@@ -345,6 +396,7 @@ export default function UserRegistrationForm() {
           setShowRetryOptions(true);
           setLivenessStage('failed');
           setFaceError(errorMessage);
+          setLivenessFeedback(null);
           return;
         }
 
@@ -357,9 +409,11 @@ export default function UserRegistrationForm() {
           setShowRetryOptions(true);
           setLivenessStage('failed');
           setFaceError(errorMessage);
+          setLivenessFeedback(null);
         } else {
           setLivenessStage('complete');
           setFaceError(null);
+          setLivenessFeedback(null);
         }
       } catch (err) {
         console.error("Face verification fetch error:", err);
@@ -368,6 +422,7 @@ export default function UserRegistrationForm() {
         setShowRetryOptions(true);
         setLivenessStage('failed');
         setFaceError('Network error during face verification.');
+        setLivenessFeedback(null);
       } finally {
         setVerifying(false);
       }
@@ -378,6 +433,7 @@ export default function UserRegistrationForm() {
       setShowRetryOptions(true);
       setVerifying(false);
       setFaceDetectionPaused(true);
+      setLivenessFeedback(null);
     }
   };
 
@@ -390,6 +446,7 @@ export default function UserRegistrationForm() {
     setLivenessStage('center');
     setFaceError(null);
     poseDataRef.current = null;
+    setLivenessFeedback(null);
     setVerifying(false);
     setDetecting(false);
   };
@@ -553,20 +610,24 @@ export default function UserRegistrationForm() {
         </div>
 
         {faceVerified !== true && (
-           <div className="text-sm min-h-[80px] flex flex-col justify-center items-center bg-gray-50 p-3 rounded-lg border border-gray-200">
-              <p className={`text-base font-medium mb-2 ${livenessStage === 'failed' || faceError ? 'text-red-600' : 'text-gray-800'}`}>
+           <div className="text-sm min-h-[100px] flex flex-col justify-center items-center bg-gray-50 p-3 rounded-lg border border-gray-200">
+              <p className={`text-base font-medium mb-1 ${livenessStage === 'failed' || faceError ? 'text-red-600' : 'text-gray-800'}`}>
                  {getLivenessInstruction()}
               </p>
 
-              {requiredMovements.includes(livenessStage) && renderProgressIndicators()}
+              {livenessFeedback && !faceError && (
+                  <p className="text-blue-600 text-sm font-normal mt-0 mb-2 px-2">{livenessFeedback}</p>
+              )}
 
-               {(detecting || verifying) && livenessStage !== 'failed' && (
-                   <div className="mt-2 w-6 h-6 border-2 border-blue-200 border-t-blue-500 rounded-full animate-spin"></div>
+              {faceError && <p className="text-red-600 text-sm font-semibold mt-1 mb-2 px-2">{faceError}</p>}
+
+              {requiredMovements.includes(livenessStage) && !faceError && renderProgressIndicators()}
+
+               {(detecting || verifying) && livenessStage !== 'failed' && !faceError && (
+                   <div className="mt-2 w-5 h-5 border-2 border-blue-200 border-t-blue-500 rounded-full animate-spin"></div>
                )}
 
-              {faceError && <p className="text-red-600 text-xs mt-2 px-2">{faceError}</p>}
-
-               {!facePresent && requiredMovements.includes(livenessStage) && !detecting && !faceError && (
+               {!facePresent && requiredMovements.includes(livenessStage) && !detecting && !faceError && !livenessFeedback && (
                    <p className="text-amber-600 text-xs mt-1">Cannot detect face. Adjust position/lighting.</p>
                )}
            </div>
