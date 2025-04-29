@@ -30,7 +30,7 @@ export default async function handler(req, res) {
     
     const response = await client.send(command);
 
-    const MIN_FACE_CONFIDENCE = 90; // Minimum confidence threshold (0-100)
+    const MIN_FACE_CONFIDENCE = 75; // Relaxed confidence threshold (was 90)
 
     let faceDetected = false;
     let pose = null;
