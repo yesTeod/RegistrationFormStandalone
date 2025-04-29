@@ -32,6 +32,10 @@ export default function UserRegistrationForm() {
   const [debugReadyState, setDebugReadyState] = useState(null);
   const [debugStreamActive, setDebugStreamActive] = useState(null);
 
+  // Define confidence thresholds for smile/eyes open
+  const SMILE_CONFIDENCE_THRESHOLD = 75;
+  const EYES_OPEN_CONFIDENCE_THRESHOLD = 75;
+
   const [livenessStage, setLivenessStage] = useState('idle');
   const [livenessProgress, setLivenessProgress] = useState({
     center: false,
@@ -39,9 +43,11 @@ export default function UserRegistrationForm() {
     down: false,
     left: false,
     right: false,
+    blink: false,
+    smile: false,
   });
-  const requiredMovements = ['center', 'up', 'down', 'left', 'right'];
-  const poseDataRef = useRef(null);
+  const requiredMovements = ['center', 'up', 'down', 'left', 'right', 'blink', 'smile'];
+  const faceDetailsRef = useRef(null);
 
   const videoRef = useRef(null);
   const faceVideoRef = useRef(null);
@@ -173,8 +179,8 @@ export default function UserRegistrationForm() {
     setFacePresent(false);
     lastDetectionTime.current = 0;
     setLivenessStage('idle');
-    setLivenessProgress({ center: false, up: false, down: false, left: false, right: false });
-    poseDataRef.current = null;
+    setLivenessProgress({ center: false, up: false, down: false, left: false, right: false, blink: false, smile: false });
+    faceDetailsRef.current = null;
     setFaceError(null);
     setVerifying(false);
     setDetecting(false);
@@ -182,96 +188,126 @@ export default function UserRegistrationForm() {
     startCamera("user", faceVideoRef);
   };
 
-  const checkLivenessPose = (pose) => {
-    if (!pose || livenessStage === 'idle' || livenessStage === 'verifying' || livenessStage === 'complete' || livenessStage === 'failed') return;
+  const checkLivenessChallenge = (details) => {
+    if (!details || livenessStage === 'idle' || livenessStage === 'verifying' || livenessStage === 'complete' || livenessStage === 'failed') return;
 
     // Clear feedback/error at the start of each check cycle
-    setLivenessFeedback(null); 
-    setFaceError(null); 
+    setLivenessFeedback(null);
+    setFaceError(null);
 
     // --- Check for stage timeout ---
     if (poseStartTime && (Date.now() - poseStartTime > POSE_STAGE_TIMEOUT)) {
       console.warn(`Liveness: Timeout on stage: ${livenessStage}`);
-      setFaceError(`Timeout: Could not detect ${livenessStage} pose in time.`);
+      setFaceError(`Timeout: Could not detect '${livenessStage}' action in time.`);
       setLivenessStage('failed');
       setFaceDetectionPaused(true);
       setShowRetryOptions(true);
-      clearTimeout(poseHoldTimer); 
+      clearTimeout(poseHoldTimer);
       setPoseHoldTimer(null);
       setPoseStartTime(null);
       return;
     }
     // --- End Timeout Check ---
 
-    const { Yaw: yaw, Pitch: pitch } = pose;
+    const { Pose: pose, Smile: smile, EyesOpen: eyesOpen } = details;
     const YAW_THRESHOLD = 15;
     const PITCH_THRESHOLD = 15;
-    const NEAR_THRESHOLD_FACTOR = 0.5; 
+    const NEAR_THRESHOLD_FACTOR = 0.5;
 
-    if (typeof yaw !== 'number' || typeof pitch !== 'number') {
-      console.warn("Invalid pose data received:", pose);
-      setFaceError("Could not read head pose. Try adjusting lighting or position.");
-      // Clear hold timer if pose data is invalid
-      if (poseHoldTimer) clearTimeout(poseHoldTimer);
-      setPoseHoldTimer(null);
-      return;
-    }
-
-    let isPoseCorrect = false;
+    let isChallengeMet = false;
     let feedbackMsg = null;
 
-    switch (livenessStage) {
-      case 'center':
-        if (Math.abs(yaw) < 7 && Math.abs(pitch) < 7) isPoseCorrect = true;
-        else feedbackMsg = "Keep looking straight ahead.";
-        break;
-      case 'up':
-        if (pitch < -PITCH_THRESHOLD && Math.abs(yaw) < YAW_THRESHOLD) isPoseCorrect = true;
-        else if (pitch < -PITCH_THRESHOLD * NEAR_THRESHOLD_FACTOR && Math.abs(yaw) < YAW_THRESHOLD * 1.5) feedbackMsg = "Tilt head up a bit more.";
-        else if (Math.abs(yaw) >= YAW_THRESHOLD) feedbackMsg = "Keep head centered while tilting up.";
-        else feedbackMsg = "Slowly tilt head upwards.";
-        break;
-      case 'down':
-        if (pitch > PITCH_THRESHOLD && Math.abs(yaw) < YAW_THRESHOLD) isPoseCorrect = true;
-        else if (pitch > PITCH_THRESHOLD * NEAR_THRESHOLD_FACTOR && Math.abs(yaw) < YAW_THRESHOLD * 1.5) feedbackMsg = "Tilt head down a bit more.";
-        else if (Math.abs(yaw) >= YAW_THRESHOLD) feedbackMsg = "Keep head centered while tilting down.";
-        else feedbackMsg = "Slowly tilt head downwards.";
-        break;
-      case 'left':
-        if (yaw > YAW_THRESHOLD && Math.abs(pitch) < PITCH_THRESHOLD) isPoseCorrect = true;
-        else if (yaw > YAW_THRESHOLD * NEAR_THRESHOLD_FACTOR && Math.abs(pitch) < PITCH_THRESHOLD * 1.5) feedbackMsg = "Turn head left a bit more.";
-        else if (Math.abs(pitch) >= PITCH_THRESHOLD) feedbackMsg = "Keep head level while turning left.";
-        else feedbackMsg = "Slowly turn head to your left.";
-        break;
-      case 'right':
-        if (yaw < -YAW_THRESHOLD && Math.abs(pitch) < PITCH_THRESHOLD) isPoseCorrect = true;
-        else if (yaw < -YAW_THRESHOLD * NEAR_THRESHOLD_FACTOR && Math.abs(pitch) < PITCH_THRESHOLD * 1.5) feedbackMsg = "Turn head right a bit more.";
-        else if (Math.abs(pitch) >= PITCH_THRESHOLD) feedbackMsg = "Keep head level while turning right.";
-        else feedbackMsg = "Slowly turn head to your right.";
-        break;
-      default: break;
+    // Check pose first for pose-based stages
+    if (['center', 'up', 'down', 'left', 'right'].includes(livenessStage)) {
+        if (!pose || typeof pose.Yaw !== 'number' || typeof pose.Pitch !== 'number') {
+            console.warn("Invalid pose data received:", pose);
+            setFaceError("Could not read head pose. Try adjusting lighting or position.");
+            if (poseHoldTimer) clearTimeout(poseHoldTimer);
+            setPoseHoldTimer(null);
+            return;
+        }
+        const { Yaw: yaw, Pitch: pitch } = pose;
+
+        switch (livenessStage) {
+          case 'center':
+            if (Math.abs(yaw) < 7 && Math.abs(pitch) < 7) isChallengeMet = true;
+            else feedbackMsg = "Keep looking straight ahead.";
+            break;
+          case 'up':
+            if (pitch < -PITCH_THRESHOLD && Math.abs(yaw) < YAW_THRESHOLD) isChallengeMet = true;
+            else if (pitch < -PITCH_THRESHOLD * NEAR_THRESHOLD_FACTOR && Math.abs(yaw) < YAW_THRESHOLD * 1.5) feedbackMsg = "Tilt head up a bit more.";
+            else if (Math.abs(yaw) >= YAW_THRESHOLD) feedbackMsg = "Keep head centered while tilting up.";
+            else feedbackMsg = "Slowly tilt head upwards.";
+            break;
+          case 'down':
+            if (pitch > PITCH_THRESHOLD && Math.abs(yaw) < YAW_THRESHOLD) isChallengeMet = true;
+            else if (pitch > PITCH_THRESHOLD * NEAR_THRESHOLD_FACTOR && Math.abs(yaw) < YAW_THRESHOLD * 1.5) feedbackMsg = "Tilt head down a bit more.";
+            else if (Math.abs(yaw) >= YAW_THRESHOLD) feedbackMsg = "Keep head centered while tilting down.";
+            else feedbackMsg = "Slowly tilt head downwards.";
+            break;
+          case 'left':
+            if (yaw > YAW_THRESHOLD && Math.abs(pitch) < PITCH_THRESHOLD) isChallengeMet = true;
+            else if (yaw > YAW_THRESHOLD * NEAR_THRESHOLD_FACTOR && Math.abs(pitch) < PITCH_THRESHOLD * 1.5) feedbackMsg = "Turn head left a bit more.";
+            else if (Math.abs(pitch) >= PITCH_THRESHOLD) feedbackMsg = "Keep head level while turning left.";
+            else feedbackMsg = "Slowly turn head to your left.";
+            break;
+          case 'right':
+            if (yaw < -YAW_THRESHOLD && Math.abs(pitch) < PITCH_THRESHOLD) isChallengeMet = true;
+            else if (yaw < -YAW_THRESHOLD * NEAR_THRESHOLD_FACTOR && Math.abs(pitch) < PITCH_THRESHOLD * 1.5) feedbackMsg = "Turn head right a bit more.";
+            else if (Math.abs(pitch) >= PITCH_THRESHOLD) feedbackMsg = "Keep head level while turning right.";
+            else feedbackMsg = "Slowly turn head to your right.";
+            break;
+           default: break;
+        }
+    } else if (livenessStage === 'blink') {
+        if (!eyesOpen || typeof eyesOpen.Value !== 'boolean' || typeof eyesOpen.Confidence !== 'number') {
+            console.warn("Invalid eyesOpen data received:", eyesOpen);
+            setFaceError("Could not detect eye status. Adjust lighting or position.");
+            if (poseHoldTimer) clearTimeout(poseHoldTimer);
+            setPoseHoldTimer(null);
+            return;
+        }
+        // We want to detect the closed state (Value: false) with sufficient confidence
+        if (eyesOpen.Value === false && eyesOpen.Confidence >= EYES_OPEN_CONFIDENCE_THRESHOLD) {
+            isChallengeMet = true;
+        } else {
+             feedbackMsg = "Blink both eyes fully.";
+        }
+    } else if (livenessStage === 'smile') {
+        if (!smile || typeof smile.Value !== 'boolean' || typeof smile.Confidence !== 'number') {
+             console.warn("Invalid smile data received:", smile);
+            setFaceError("Could not detect smile status. Adjust lighting or position.");
+            if (poseHoldTimer) clearTimeout(poseHoldTimer);
+            setPoseHoldTimer(null);
+            return;
+        }
+        // We want to detect the smiling state (Value: true) with sufficient confidence
+        if (smile.Value === true && smile.Confidence >= SMILE_CONFIDENCE_THRESHOLD) {
+            isChallengeMet = true;
+        } else {
+             feedbackMsg = "Smile naturally.";
+        }
     }
 
-    if (isPoseCorrect) {
-        setLivenessFeedback("Hold position..."); // Feedback for holding
-        // If pose is correct and no timer is running, start one
+
+    if (isChallengeMet) {
+        setLivenessFeedback("Hold position...");
         if (!poseHoldTimer) {
-            console.log(`Liveness: Correct pose detected for ${livenessStage}, starting hold timer.`);
+            console.log(`Liveness: Correct action detected for ${livenessStage}, starting hold timer.`);
             const timerId = setTimeout(() => {
-                console.log(`Liveness: Pose hold confirmed for ${livenessStage}.`);
+                console.log(`Liveness: Action hold confirmed for ${livenessStage}.`);
                 setLivenessProgress(prev => ({ ...prev, [livenessStage]: true }));
                 setFaceError(null);
                 setLivenessFeedback(null);
-                setPoseHoldTimer(null); // Clear the completed timer
-                setPoseStartTime(null); // Reset start time for the next stage
+                setPoseHoldTimer(null);
+                setPoseStartTime(null);
 
                 const currentIndex = requiredMovements.indexOf(livenessStage);
                 const nextIndex = currentIndex + 1;
 
                 if (nextIndex < requiredMovements.length) {
-                    // No artificial delay needed here now
                     setLivenessStage(requiredMovements[nextIndex]);
-                    setPoseStartTime(Date.now()); // Start timer for the new stage
+                    setPoseStartTime(Date.now());
                 } else {
                     console.log("Liveness: All movements detected.");
                     setFaceDetectionPaused(true);
@@ -282,9 +318,8 @@ export default function UserRegistrationForm() {
             setPoseHoldTimer(timerId);
         }
     } else {
-        // If pose is incorrect, clear any existing hold timer and set feedback
         if (poseHoldTimer) {
-            console.log(`Liveness: Pose incorrect for ${livenessStage}, clearing hold timer.`);
+            console.log(`Liveness: Action incorrect for ${livenessStage}, clearing hold timer.`);
             clearTimeout(poseHoldTimer);
             setPoseHoldTimer(null);
         }
@@ -314,27 +349,34 @@ export default function UserRegistrationForm() {
       if (!res.ok || json.error) {
         console.warn("Detection API error:", json.error || `HTTP ${res.status}`);
         setFacePresent(false);
-        poseDataRef.current = null;
+        faceDetailsRef.current = null;
         if (json.error && json.error !== faceError) setFaceError(json.error);
         else if (!json.error && res.status !== 200) setFaceError(`Detection failed (Status: ${res.status})`);
         setLivenessFeedback(null);
 
       } else {
         setFacePresent(json.faceDetected);
-        if(json.faceDetected && json.pose) {
-          poseDataRef.current = json.pose;
+        // Store the entire relevant details block from the API response
+        faceDetailsRef.current = {
+           pose: json.pose,
+           smile: json.smile,
+           eyesOpen: json.eyesOpen,
+           confidence: json.confidence
+        };
+
+        if(json.faceDetected && faceDetailsRef.current) {
           if(faceError) setFaceError(null);
           if(livenessFeedback) setLivenessFeedback(null);
-          checkLivenessPose(json.pose);
-        } else if (json.faceDetected && !json.pose) {
-          console.warn("Face detected but no pose data returned.");
-          poseDataRef.current = null;
+          checkLivenessChallenge(faceDetailsRef.current);
+        } else if (json.faceDetected && !faceDetailsRef.current) {
+          console.warn("Face detected but key details (pose/smile/eyes) are missing.");
+          faceDetailsRef.current = null;
           if (requiredMovements.includes(livenessStage)) {
-            setLivenessFeedback("Face detected, pose unclear. Ensure face is fully visible & centered.");
-            setFaceError(null);
+             setLivenessFeedback("Face detected, but details unclear. Ensure face is fully visible & centered.");
+             setFaceError(null);
           }
         } else {
-          poseDataRef.current = null;
+          faceDetailsRef.current = null;
           if (requiredMovements.includes(livenessStage)) {
             setFaceError("No face detected. Please position your face clearly in the frame.");
             setLivenessFeedback(null);
@@ -344,7 +386,7 @@ export default function UserRegistrationForm() {
     } catch (e) {
       console.error("Network error during detection:", e);
       setFacePresent(false);
-      poseDataRef.current = null;
+      faceDetailsRef.current = null;
       setFaceError('Network error connecting to detection service.');
       setLivenessFeedback(null);
     } finally {
@@ -487,10 +529,10 @@ export default function UserRegistrationForm() {
     setShowRetryOptions(false);
     setFaceDetectionPaused(false);
     lastDetectionTime.current = 0;
-    setLivenessProgress({ center: false, up: false, down: false, left: false, right: false });
+    setLivenessProgress({ center: false, up: false, down: false, left: false, right: false, blink: false, smile: false });
     setLivenessStage('center');
     setFaceError(null);
-    poseDataRef.current = null;
+    faceDetailsRef.current = null;
     setLivenessFeedback(null);
     setVerifying(false);
     setDetecting(false);
@@ -628,6 +670,8 @@ export default function UserRegistrationForm() {
         case 'down': return 'Slowly tilt your head downwards.';
         case 'left': return 'Slowly turn your head to your left.';
         case 'right': return 'Slowly turn your head to your right.';
+        case 'blink': return 'Blink both eyes now.';
+        case 'smile': return 'Smile naturally now.';
         case 'verifying': return 'Verifying your identity... Please hold still.';
         case 'complete': return faceVerified ? 'Identity Verified!' : 'Liveness check complete. Verification pending...';
         case 'failed': return 'Liveness check failed.';
@@ -783,7 +827,7 @@ export default function UserRegistrationForm() {
                  if (poseHoldTimer) clearTimeout(poseHoldTimer);
                  setPoseHoldTimer(null);
                  setShowRetryOptions(false);
-                 setLivenessProgress({ center: false, up: false, down: false, left: false, right: false });
+                 setLivenessProgress({ center: false, up: false, down: false, left: false, right: false, blink: false, smile: false });
               }}
               className="px-6 py-3 bg-yellow-500 hover:bg-yellow-400 text-black rounded-full shadow-md font-semibold text-lg transition-all duration-200 ease-in-out transform hover:scale-105"
             >
