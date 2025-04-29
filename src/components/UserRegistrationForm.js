@@ -308,7 +308,11 @@ export default function UserRegistrationForm() {
 
   const detectFaceAndPoseOnServer = async (dataURL) => {
     const now = Date.now();
-    if (now - lastDetectionTime.current < 1000 || faceDetectionPaused || livenessStage === 'idle' || livenessStage === 'verifying' || livenessStage === 'complete' || livenessStage === 'failed') {
+    if (detecting || now - lastDetectionTime.current < 1000 || faceDetectionPaused || livenessStage === 'idle' || livenessStage === 'verifying' || livenessStage === 'complete' || livenessStage === 'failed') {
+       if (detecting) {
+            console.log("Detection already in progress. Skipping new request.");
+            setDebugPollingStatus("Polling: Skipped (Detection Active)"); // Debug update
+       }
       return;
     }
 
