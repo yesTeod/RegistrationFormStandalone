@@ -1,6 +1,17 @@
 import React, { useState, useRef, useEffect } from "react";
-import { FaceLivenessDetector } from '@aws-amplify/ui-react';
+// Import the FaceLivenessDetector component using namespace import
+import * as AmplifyUIReact from '@aws-amplify/ui-react';
 import { Amplify } from 'aws-amplify';
+
+// Configure Amplify if not done elsewhere (replace with your actual config)
+// Ensure this runs once when your app initializes
+// Amplify.configure({
+//   Auth: {
+//     identityPoolId: 'YOUR_IDENTITY_POOL_ID',
+//     region: 'YOUR_REGION',
+//   },
+//   // other configurations
+// });
 
 export default function UserRegistrationForm() {
   const [step, setStep] = useState("form");
@@ -534,7 +545,7 @@ export default function UserRegistrationForm() {
          <div className="min-h-[450px] flex flex-col items-center justify-center relative"> 
             {/* Render Detector if session is ready and verification not finished */} 
             {livenessStatus === 'ready' && livenessSessionId && faceVerified === null && (
-                <FaceLivenessDetector
+                <AmplifyUIReact.FaceLivenessDetector
                   sessionId={livenessSessionId}
                   region={process.env.NEXT_PUBLIC_AWS_REGION || "us-east-1"} // Pass region correctly
                   onAnalysisComplete={handleAnalysisComplete}
