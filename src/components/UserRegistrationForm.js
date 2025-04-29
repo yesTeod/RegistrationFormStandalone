@@ -525,6 +525,9 @@ export default function UserRegistrationForm() {
   };
 
   const handleRetryVerification = () => {
+    console.log("Attempting Liveness Retry...");
+    stopCamera();
+
     setFaceVerified(null);
     setShowRetryOptions(false);
     setFaceDetectionPaused(false);
@@ -544,7 +547,11 @@ export default function UserRegistrationForm() {
     // Clear and reset timers
     if (poseHoldTimer) clearTimeout(poseHoldTimer);
     setPoseHoldTimer(null);
-    setPoseStartTime(Date.now()); // Start timer for the first stage ('center') on retry
+    setPoseStartTime(Date.now());
+
+    // Explicitly restart the camera for the retry
+    console.log("Restarting camera for retry...");
+    startCamera("user", faceVideoRef);
   };
 
   const handleVerificationComplete = () => {
