@@ -3,15 +3,27 @@ import { Amplify } from 'aws-amplify';
 import { FaceLivenessDetector } from '@aws-amplify/ui-react-liveness';
 import '@aws-amplify/ui-react/styles.css';
 
+// Define awsRegion first
+const awsRegion = process.env.REACT_APP_AWS_REGION || "us-east-1";
+
 Amplify.configure({
   Auth: {
+    region: awsRegion, // Add region here
+    // If using unauthenticated identities, you might need:
+    identityPoolId: 'eu-central-1:04cbf64c-4d6f-44e9-abe9-46466f2a0e39', 
   },
   geo: {
+    AmazonLocationService: { // Example structure if using Geo
+       region: awsRegion
+       // other geo configs...
+    }
   },
   Predictions: {
-  }
+     // Configuration for Predictions category if needed
+  },
+  // Add the top-level region configuration as well
+  aws_project_region: awsRegion 
 });
-const awsRegion = process.env.REACT_APP_AWS_REGION || "us-east-1";
 
 export default function UserRegistrationForm() {
   const [step, setStep] = useState("form");
