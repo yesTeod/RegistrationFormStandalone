@@ -2,16 +2,6 @@ import React, { useState, useRef, useEffect } from "react";
 import { FaceLivenessDetector } from '@aws-amplify/ui-react';
 import { Amplify } from 'aws-amplify';
 
-// Configure Amplify if not done elsewhere (replace with your actual config)
-// Ensure this runs once when your app initializes
-// Amplify.configure({
-//   Auth: {
-//     identityPoolId: 'YOUR_IDENTITY_POOL_ID',
-//     region: 'YOUR_REGION',
-//   },
-//   // other configurations
-// });
-
 export default function UserRegistrationForm() {
   const [step, setStep] = useState("form");
   const [email, setEmail] = useState("");
