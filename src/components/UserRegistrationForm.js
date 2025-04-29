@@ -23,6 +23,11 @@ export default function UserRegistrationForm() {
 
   const [livenessFeedback, setLivenessFeedback] = useState(null);
 
+  const [poseHoldTimer, setPoseHoldTimer] = useState(null);
+  const [poseStartTime, setPoseStartTime] = useState(null);
+  const POSE_HOLD_DURATION = 500; // ms to hold the pose
+  const POSE_STAGE_TIMEOUT = 15000; // ms before stage times out
+
   const [livenessStage, setLivenessStage] = useState('idle');
   const [livenessProgress, setLivenessProgress] = useState({
     center: false,
@@ -166,100 +171,112 @@ export default function UserRegistrationForm() {
   const checkLivenessPose = (pose) => {
     if (!pose || livenessStage === 'idle' || livenessStage === 'verifying' || livenessStage === 'complete' || livenessStage === 'failed') return;
 
-    setLivenessFeedback(null);
-    setFaceError(null);
+    // Clear feedback/error at the start of each check cycle
+    setLivenessFeedback(null); 
+    setFaceError(null); 
+
+    // --- Check for stage timeout ---
+    if (poseStartTime && (Date.now() - poseStartTime > POSE_STAGE_TIMEOUT)) {
+      console.warn(`Liveness: Timeout on stage: ${livenessStage}`);
+      setFaceError(`Timeout: Could not detect ${livenessStage} pose in time.`);
+      setLivenessStage('failed');
+      setFaceDetectionPaused(true);
+      setShowRetryOptions(true);
+      clearTimeout(poseHoldTimer); 
+      setPoseHoldTimer(null);
+      setPoseStartTime(null);
+      return;
+    }
+    // --- End Timeout Check ---
 
     const { Yaw: yaw, Pitch: pitch } = pose;
     const YAW_THRESHOLD = 15;
     const PITCH_THRESHOLD = 15;
-    const NEAR_THRESHOLD_FACTOR = 0.5;
+    const NEAR_THRESHOLD_FACTOR = 0.5; 
 
     if (typeof yaw !== 'number' || typeof pitch !== 'number') {
       console.warn("Invalid pose data received:", pose);
       setFaceError("Could not read head pose. Try adjusting lighting or position.");
+      // Clear hold timer if pose data is invalid
+      if (poseHoldTimer) clearTimeout(poseHoldTimer);
+      setPoseHoldTimer(null);
       return;
     }
 
-    let currentMoveSatisfied = false;
+    let isPoseCorrect = false;
     let feedbackMsg = null;
 
     switch (livenessStage) {
       case 'center':
-        if (Math.abs(yaw) < 7 && Math.abs(pitch) < 7) {
-             currentMoveSatisfied = true;
-        } else {
-            feedbackMsg = "Keep looking straight ahead.";
-        }
+        if (Math.abs(yaw) < 7 && Math.abs(pitch) < 7) isPoseCorrect = true;
+        else feedbackMsg = "Keep looking straight ahead.";
         break;
       case 'up':
-        if (pitch < -PITCH_THRESHOLD && Math.abs(yaw) < YAW_THRESHOLD) {
-             currentMoveSatisfied = true;
-        } else if (pitch < -PITCH_THRESHOLD * NEAR_THRESHOLD_FACTOR && Math.abs(yaw) < YAW_THRESHOLD * 1.5) {
-             feedbackMsg = "Tilt head up a bit more.";
-        } else if (Math.abs(yaw) >= YAW_THRESHOLD) {
-             feedbackMsg = "Keep head centered while tilting up.";
-        } else {
-             feedbackMsg = "Slowly tilt head upwards.";
-        }
+        if (pitch < -PITCH_THRESHOLD && Math.abs(yaw) < YAW_THRESHOLD) isPoseCorrect = true;
+        else if (pitch < -PITCH_THRESHOLD * NEAR_THRESHOLD_FACTOR && Math.abs(yaw) < YAW_THRESHOLD * 1.5) feedbackMsg = "Tilt head up a bit more.";
+        else if (Math.abs(yaw) >= YAW_THRESHOLD) feedbackMsg = "Keep head centered while tilting up.";
+        else feedbackMsg = "Slowly tilt head upwards.";
         break;
       case 'down':
-        if (pitch > PITCH_THRESHOLD && Math.abs(yaw) < YAW_THRESHOLD) {
-            currentMoveSatisfied = true;
-        } else if (pitch > PITCH_THRESHOLD * NEAR_THRESHOLD_FACTOR && Math.abs(yaw) < YAW_THRESHOLD * 1.5) {
-            feedbackMsg = "Tilt head down a bit more.";
-        } else if (Math.abs(yaw) >= YAW_THRESHOLD) {
-            feedbackMsg = "Keep head centered while tilting down.";
-        } else {
-            feedbackMsg = "Slowly tilt head downwards.";
-        }
+        if (pitch > PITCH_THRESHOLD && Math.abs(yaw) < YAW_THRESHOLD) isPoseCorrect = true;
+        else if (pitch > PITCH_THRESHOLD * NEAR_THRESHOLD_FACTOR && Math.abs(yaw) < YAW_THRESHOLD * 1.5) feedbackMsg = "Tilt head down a bit more.";
+        else if (Math.abs(yaw) >= YAW_THRESHOLD) feedbackMsg = "Keep head centered while tilting down.";
+        else feedbackMsg = "Slowly tilt head downwards.";
         break;
       case 'left':
-        if (yaw > YAW_THRESHOLD && Math.abs(pitch) < PITCH_THRESHOLD) {
-             currentMoveSatisfied = true;
-        } else if (yaw > YAW_THRESHOLD * NEAR_THRESHOLD_FACTOR && Math.abs(pitch) < PITCH_THRESHOLD * 1.5) {
-             feedbackMsg = "Turn head left a bit more.";
-        } else if (Math.abs(pitch) >= PITCH_THRESHOLD) {
-             feedbackMsg = "Keep head level while turning left.";
-        } else {
-             feedbackMsg = "Slowly turn head to your left.";
-        }
+        if (yaw > YAW_THRESHOLD && Math.abs(pitch) < PITCH_THRESHOLD) isPoseCorrect = true;
+        else if (yaw > YAW_THRESHOLD * NEAR_THRESHOLD_FACTOR && Math.abs(pitch) < PITCH_THRESHOLD * 1.5) feedbackMsg = "Turn head left a bit more.";
+        else if (Math.abs(pitch) >= PITCH_THRESHOLD) feedbackMsg = "Keep head level while turning left.";
+        else feedbackMsg = "Slowly turn head to your left.";
         break;
       case 'right':
-        if (yaw < -YAW_THRESHOLD && Math.abs(pitch) < PITCH_THRESHOLD) {
-             currentMoveSatisfied = true;
-        } else if (yaw < -YAW_THRESHOLD * NEAR_THRESHOLD_FACTOR && Math.abs(pitch) < PITCH_THRESHOLD * 1.5) {
-             feedbackMsg = "Turn head right a bit more.";
-        } else if (Math.abs(pitch) >= PITCH_THRESHOLD) {
-             feedbackMsg = "Keep head level while turning right.";
-        } else {
-             feedbackMsg = "Slowly turn head to your right.";
-        }
+        if (yaw < -YAW_THRESHOLD && Math.abs(pitch) < PITCH_THRESHOLD) isPoseCorrect = true;
+        else if (yaw < -YAW_THRESHOLD * NEAR_THRESHOLD_FACTOR && Math.abs(pitch) < PITCH_THRESHOLD * 1.5) feedbackMsg = "Turn head right a bit more.";
+        else if (Math.abs(pitch) >= PITCH_THRESHOLD) feedbackMsg = "Keep head level while turning right.";
+        else feedbackMsg = "Slowly turn head to your right.";
         break;
-      default:
-        break;
+      default: break;
     }
 
-    if (currentMoveSatisfied) {
-      console.log(`Liveness: Detected movement for stage: ${livenessStage}`);
-      setLivenessProgress(prev => ({ ...prev, [livenessStage]: true }));
-      setFaceError(null);
-      setLivenessFeedback(null);
+    if (isPoseCorrect) {
+        setLivenessFeedback("Hold position..."); // Feedback for holding
+        // If pose is correct and no timer is running, start one
+        if (!poseHoldTimer) {
+            console.log(`Liveness: Correct pose detected for ${livenessStage}, starting hold timer.`);
+            const timerId = setTimeout(() => {
+                console.log(`Liveness: Pose hold confirmed for ${livenessStage}.`);
+                setLivenessProgress(prev => ({ ...prev, [livenessStage]: true }));
+                setFaceError(null);
+                setLivenessFeedback(null);
+                setPoseHoldTimer(null); // Clear the completed timer
+                setPoseStartTime(null); // Reset start time for the next stage
 
-      const currentIndex = requiredMovements.indexOf(livenessStage);
-      const nextIndex = currentIndex + 1;
+                const currentIndex = requiredMovements.indexOf(livenessStage);
+                const nextIndex = currentIndex + 1;
 
-      if (nextIndex < requiredMovements.length) {
-        setTimeout(() => {
-          setLivenessStage(requiredMovements[nextIndex]);
-        }, 300);
-      } else {
-        console.log("Liveness: All movements detected.");
-        setFaceDetectionPaused(true);
-        setLivenessStage('verifying');
-        captureAndVerify();
-      }
-    } else if (feedbackMsg) {
-        setLivenessFeedback(feedbackMsg);
+                if (nextIndex < requiredMovements.length) {
+                    // No artificial delay needed here now
+                    setLivenessStage(requiredMovements[nextIndex]);
+                    setPoseStartTime(Date.now()); // Start timer for the new stage
+                } else {
+                    console.log("Liveness: All movements detected.");
+                    setFaceDetectionPaused(true);
+                    setLivenessStage('verifying');
+                    captureAndVerify();
+                }
+            }, POSE_HOLD_DURATION);
+            setPoseHoldTimer(timerId);
+        }
+    } else {
+        // If pose is incorrect, clear any existing hold timer and set feedback
+        if (poseHoldTimer) {
+            console.log(`Liveness: Pose incorrect for ${livenessStage}, clearing hold timer.`);
+            clearTimeout(poseHoldTimer);
+            setPoseHoldTimer(null);
+        }
+        if (feedbackMsg) {
+            setLivenessFeedback(feedbackMsg);
+        }
     }
   };
 
@@ -449,6 +466,10 @@ export default function UserRegistrationForm() {
     setLivenessFeedback(null);
     setVerifying(false);
     setDetecting(false);
+    // Clear and reset timers
+    if (poseHoldTimer) clearTimeout(poseHoldTimer);
+    setPoseHoldTimer(null);
+    setPoseStartTime(Date.now()); // Start timer for the first stage ('center') on retry
   };
 
   const handleVerificationComplete = () => {
@@ -556,6 +577,19 @@ export default function UserRegistrationForm() {
       stopCamera();
     };
   }, []);
+
+  useEffect(() => {
+    // --- Component Cleanup Effect ---
+    return () => {
+      stopCamera(); // Ensure camera stops on unmount
+      // Clear any running timers
+      if (poseHoldTimer) {
+         clearTimeout(poseHoldTimer);
+         console.log("Cleanup: Cleared pose hold timer.");
+      }
+      // No need to clear the interval here as the polling effect's cleanup does that
+    };
+  }, [poseHoldTimer]); // Add poseHoldTimer dependency
 
   const renderVerificationStepContent = () => {
     const getLivenessInstruction = () => {
@@ -709,6 +743,13 @@ export default function UserRegistrationForm() {
               onClick={() => {
                  setLivenessStage('center');
                  setFaceDetectionPaused(false);
+                 setPoseStartTime(Date.now());
+                 setFaceError(null);
+                 setLivenessFeedback(null);
+                 if (poseHoldTimer) clearTimeout(poseHoldTimer);
+                 setPoseHoldTimer(null);
+                 setShowRetryOptions(false);
+                 setLivenessProgress({ center: false, up: false, down: false, left: false, right: false });
               }}
               className="px-6 py-3 bg-yellow-500 hover:bg-yellow-400 text-black rounded-full shadow-md font-semibold text-lg transition-all duration-200 ease-in-out transform hover:scale-105"
             >
