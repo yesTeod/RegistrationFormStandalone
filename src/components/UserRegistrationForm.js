@@ -31,6 +31,11 @@ export default function UserRegistrationForm() {
   // State for visual debugging on mobile
   const [debugReadyState, setDebugReadyState] = useState(null);
   const [debugStreamActive, setDebugStreamActive] = useState(null);
+  const [debugEffectStatus, setDebugEffectStatus] = useState("Effect Initial");
+  const [debugIntervalStatus, setDebugIntervalStatus] = useState("Interval Initial");
+  const [debugPollingStatus, setDebugPollingStatus] = useState("Polling Initial");
+  const [debugLastError, setDebugLastError] = useState(null);
+  const [showDebugInfo, setShowDebugInfo] = useState(false);
 
   // Define confidence thresholds for smile/eyes open
   const SMILE_CONFIDENCE_THRESHOLD = 75;
@@ -180,6 +185,11 @@ export default function UserRegistrationForm() {
     setFaceError(null);
     setVerifying(false);
     setDetecting(false);
+    // Reset debug states on submit
+    setDebugEffectStatus("Reset on Submit");
+    setDebugIntervalStatus("Reset on Submit");
+    setDebugPollingStatus("Reset on Submit");
+    setDebugLastError(null);
 
     startCamera("user", faceVideoRef);
   };
@@ -334,15 +344,18 @@ export default function UserRegistrationForm() {
         if(json.faceDetected && faceDetailsRef.current) {
           if(faceError) setFaceError(null);
           if(livenessFeedback) setLivenessFeedback(null);
+          setDebugPollingStatus("Check Challenge");
           checkLivenessChallenge(faceDetailsRef.current);
         } else if (json.faceDetected && !faceDetailsRef.current) {
           console.warn("Face detected but key details (pose/smile/eyes) are missing.");
+          setDebugPollingStatus("Warn: Details Missing");
           faceDetailsRef.current = null;
           if (requiredMovements.includes(livenessStage)) {
              setLivenessFeedback("Face detected, but details unclear. Ensure face is fully visible & centered.");
              setFaceError(null);
           }
         } else {
+          setDebugPollingStatus("No Face Detected by API");
           faceDetailsRef.current = null;
           if (requiredMovements.includes(livenessStage)) {
             setFaceError("No face detected. Please position your face clearly in the frame.");
@@ -352,6 +365,8 @@ export default function UserRegistrationForm() {
       }
     } catch (e) {
       console.error("Network error during detection:", e);
+      setDebugPollingStatus(`Network Error: ${e.message}`);
+      setDebugLastError(`Network Error: ${e.message}`);
       setFacePresent(false);
       faceDetailsRef.current = null;
       setFaceError('Network error connecting to detection service.');
@@ -366,10 +381,13 @@ export default function UserRegistrationForm() {
     const isActiveLiveness = requiredMovements.includes(livenessStage);
 
     if (step === 'verification' && isActiveLiveness && !faceDetectionPaused) {
-      console.log(`Liveness: Starting polling for stage: ${livenessStage}`);
+      console.log(`Liveness EFFECT: Setting up polling interval. Step: ${step}, Stage: ${livenessStage}, Paused: ${faceDetectionPaused}`);
+      setDebugEffectStatus(`Effect: Setting Interval (Stage: ${livenessStage})`);
       setFaceError(null);
       interval = setInterval(() => {
-        if (faceVideoRef.current && faceVideoRef.current.readyState >= 2 && faceCanvasRef.current) {
+        console.log(`Liveness INTERVAL: Fired. Stage: ${livenessStage}`);
+        setDebugIntervalStatus(`Interval: Fired (Stage: ${livenessStage})`);
+        if (faceVideoRef.current && faceCanvasRef.current) {
           const video = faceVideoRef.current;
           const currentReadyState = video.readyState;
           const currentStreamActive = !!(video.srcObject?.active);
@@ -378,27 +396,44 @@ export default function UserRegistrationForm() {
           setDebugReadyState(currentReadyState);
           setDebugStreamActive(currentStreamActive);
 
-          // Log status (will still work on desktop, useful backup)
-          console.log(`Liveness Polling (${livenessStage}): Video readyState=${currentReadyState}, srcObject active=${currentStreamActive}`);
+          console.log(`Liveness Polling (${livenessStage}): Video exists, readyState=${currentReadyState}, srcObject active=${currentStreamActive}`);
 
-          // Only proceed with drawing/detection if video is ready
-          if (currentReadyState >= 2) { 
-            const canvas = faceCanvasRef.current;
-            const context = canvas.getContext("2d");
-            const videoWidth = faceVideoRef.current.videoWidth;
-            const videoHeight = faceVideoRef.current.videoHeight;
-            if (canvas.width !== videoWidth || canvas.height !== videoHeight) {
-              canvas.width = videoWidth || 320;
-              canvas.height = videoHeight || 240;
+          // Only proceed with drawing/detection if video is ready (readyState >= 2 means HAVE_CURRENT_DATA)
+          if (currentReadyState >= 2) {
+            console.log(`Liveness Polling (${livenessStage}): Video ready, attempting canvas draw...`);
+            setDebugPollingStatus(`Polling: Video Ready (RS=${currentReadyState}), Drawing...`);
+            try {
+                const canvas = faceCanvasRef.current;
+                const context = canvas.getContext("2d");
+                const videoWidth = video.videoWidth;
+                const videoHeight = video.videoHeight;
+                if (canvas.width !== videoWidth || canvas.height !== videoHeight) {
+                  canvas.width = videoWidth || 320;
+                  canvas.height = videoHeight || 240;
+                }
+                context.drawImage(video, 0, 0, canvas.width, canvas.height);
+                const dataURL = canvas.toDataURL('image/jpeg', 0.8);
+                console.log(`Liveness Polling (${livenessStage}): Canvas draw successful, initiating detection request.`);
+                setDebugPollingStatus(`Polling: Draw OK, Sending Request...`);
+                detectFaceAndPoseOnServer(dataURL);
+            } catch (canvasError) {
+                 console.error(`Liveness Polling (${livenessStage}): Error during canvas draw/capture:`, canvasError);
+                 setDebugPollingStatus(`Polling: Canvas Error! ${canvasError.message}`);
+                 setDebugLastError(`Canvas Error: ${canvasError.message}`);
             }
-            context.drawImage(faceVideoRef.current, 0, 0, canvas.width, canvas.height);
-            const dataURL = canvas.toDataURL('image/jpeg', 0.8);
-            detectFaceAndPoseOnServer(dataURL);
+          } else {
+            console.log(`Liveness Polling (${livenessStage}): Video not ready (readyState: ${currentReadyState}). Skipping frame.`);
+            setDebugPollingStatus(`Polling: Video Not Ready (RS=${currentReadyState})`);
           }
+        } else {
+            console.log(`Liveness INTERVAL: faceVideoRef (${!!faceVideoRef.current}) or faceCanvasRef (${!!faceCanvasRef.current}) not available.`);
+            setDebugIntervalStatus(`Interval: Refs Not Ready (Vid: ${!!faceVideoRef.current}, Can: ${!!faceCanvasRef.current})`);
+            setDebugPollingStatus("Polling: Refs Not Ready");
         }
       }, 750);
     } else {
-      console.log(`Liveness: Polling conditions not met or stopped. Step: ${step}, Stage: ${livenessStage}, Paused: ${faceDetectionPaused}`);
+      console.log(`Liveness EFFECT: Conditions NOT met or polling stopped. Step: ${step}, Stage: ${livenessStage}, Paused: ${faceDetectionPaused}, IsActiveLiveness: ${isActiveLiveness}`);
+      setDebugEffectStatus(`Effect: Conditions NOT Met (Step: ${step}, Stage: ${livenessStage}, Paused: ${faceDetectionPaused}, Active: ${isActiveLiveness})`);
     }
 
     return () => {
@@ -503,6 +538,11 @@ export default function UserRegistrationForm() {
     setLivenessFeedback(null);
     setVerifying(false);
     setDetecting(false);
+    // Reset debug states on retry
+    setDebugEffectStatus("Reset on Retry");
+    setDebugIntervalStatus("Reset on Retry");
+    setDebugPollingStatus("Reset on Retry");
+    setDebugLastError(null);
     // Clear and reset timers
     if (poseHoldTimer) clearTimeout(poseHoldTimer);
     setPoseHoldTimer(null);
@@ -680,7 +720,22 @@ export default function UserRegistrationForm() {
 
         {/* --- Visual Debug Info --- */}
         <div className="text-xs text-gray-500 text-center mt-1">
-            Cam Status: RS={debugReadyState ?? 'N/A'}, Active={debugStreamActive === null ? 'N/A' : String(debugStreamActive)}
+            <button onClick={() => setShowDebugInfo(!showDebugInfo)} className="text-blue-600 underline text-xs">{showDebugInfo ? "Hide" : "Show"} Debug</button>
+            {showDebugInfo && (
+                 <div className="mt-1 p-2 border border-dashed border-gray-400 bg-gray-50 text-left space-y-0.5 overflow-x-auto">
+                    <p><strong>Effect:</strong> {debugEffectStatus}</p>
+                    <p><strong>Interval:</strong> {debugIntervalStatus}</p>
+                    <p><strong>Polling:</strong> {debugPollingStatus}</p>
+                    <p><strong>Video RS:</strong> {debugReadyState ?? 'N/A'}</p>
+                    <p><strong>Stream Active:</strong> {debugStreamActive === null ? 'N/A' : String(debugStreamActive)}</p>
+                    <p><strong>Face Present:</strong> {facePresent ? 'Yes' : 'No'}</p>
+                    <p><strong>Detecting:</strong> {detecting ? 'Yes' : 'No'}</p>
+                    <p><strong>Verifying:</strong> {verifying ? 'Yes' : 'No'}</p>
+                    <p><strong>Paused:</strong> {faceDetectionPaused ? 'Yes' : 'No'}</p>
+                    <p><strong>Stage:</strong> {livenessStage}</p>
+                    {debugLastError && <p className="text-red-600"><strong>LAST ERROR:</strong> {debugLastError}</p>}
+                 </div>
+            )}
         </div>
         {/* --- End Debug Info --- */}
 
