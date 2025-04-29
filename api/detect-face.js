@@ -30,26 +30,40 @@ export default async function handler(req, res) {
     
     const response = await client.send(command);
 
-    const faceDetected = Array.isArray(response.FaceDetails) && response.FaceDetails.length > 0;
+    const MIN_FACE_CONFIDENCE = 90; // Minimum confidence threshold (0-100)
+
+    let faceDetected = false;
     let pose = null;
     let error = null;
+    let confidence = null; // Optional: log confidence
 
-    if (faceDetected) {
-      // Extract Pose from the first detected face if available
-      if (response.FaceDetails[0].Pose) {
-        pose = response.FaceDetails[0].Pose; // Contains Yaw, Pitch, Roll
-      } else {
-         console.warn("Face detected but Pose data is missing in Rekognition response.");
-         // Optionally set an error or just return null pose
-         error = "Pose data not available"; 
-      }
+    if (Array.isArray(response.FaceDetails) && response.FaceDetails.length > 0) {
+        const primaryFace = response.FaceDetails[0];
+        confidence = primaryFace.Confidence; // Store confidence
+
+        // Check if confidence meets the threshold
+        if (confidence >= MIN_FACE_CONFIDENCE) {
+            faceDetected = true;
+            // Extract Pose only if confidence is sufficient
+            if (primaryFace.Pose) {
+                pose = primaryFace.Pose; // Contains Yaw, Pitch, Roll
+            } else {
+                console.warn(`Face detected with sufficient confidence (${confidence}%), but Pose data is missing.`);
+                error = "Pose data not available despite good detection"; 
+            }
+        } else {
+            // Confidence too low, treat as no detection for our purposes
+            console.log(`Face detected but confidence (${confidence}%) below threshold (${MIN_FACE_CONFIDENCE}%).`);
+            faceDetected = false; 
+            // error = "Face detected with low confidence"; // Optionally set specific error
+        }
     } else {
-        // Optionally set an error if no face is detected
-        // error = "No face detected"; // Or handle this specifically on the frontend
+        // No face details returned by Rekognition
+        error = "No face detected";
     }
 
     // Return the detection status and pose data
-    return res.status(200).json({ faceDetected, pose, error });
+    return res.status(200).json({ faceDetected, pose, confidence, error }); // Include confidence for potential debugging
 
   } catch (err) {
     console.error('detect-face error:', err);
