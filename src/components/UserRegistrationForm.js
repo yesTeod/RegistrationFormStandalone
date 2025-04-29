@@ -36,6 +36,9 @@ export default function UserRegistrationForm() {
   const poseHoldStateRef = useRef({ targetPose: null, startTime: null });
   const POSE_HOLD_DURATION = 200;
   const [isInTargetZone, setIsInTargetZone] = useState(false);
+  const [poseConfidence, setPoseConfidence] = useState('calculating');
+  const POSE_STABILITY_THRESHOLD_HIGH = 2.0;
+  const POSE_STABILITY_THRESHOLD_MEDIUM = 4.0;
 
   const videoRef = useRef(null);
   const faceVideoRef = useRef(null);
@@ -166,9 +169,18 @@ export default function UserRegistrationForm() {
     startCamera("user", faceVideoRef);
   };
 
+  const calculateStandardDeviation = (values) => {
+    const n = values.length;
+    if (n < 2) return 0;
+    const mean = values.reduce((a, b) => a + b) / n;
+    const variance = values.reduce((a, b) => a + (b - mean) ** 2, 0) / n;
+    return Math.sqrt(variance);
+  };
+
   const getSmoothedPose = () => {
     if (poseHistoryRef.current.length < POSE_HISTORY_LENGTH) {
-      return null;
+      setPoseConfidence('calculating');
+      return { Yaw: null, Pitch: null, confidence: 'calculating' };
     }
     let sumYaw = 0;
     let sumPitch = 0;
@@ -176,14 +188,38 @@ export default function UserRegistrationForm() {
       sumYaw += p.Yaw;
       sumPitch += p.Pitch;
     });
+    const meanYaw = sumYaw / POSE_HISTORY_LENGTH;
+    const meanPitch = sumPitch / POSE_HISTORY_LENGTH;
+
+    const yawValues = poseHistoryRef.current.map(p => p.Yaw);
+    const pitchValues = poseHistoryRef.current.map(p => p.Pitch);
+    const yawStdDev = calculateStandardDeviation(yawValues);
+    const pitchStdDev = calculateStandardDeviation(pitchValues);
+
+    const maxStdDev = Math.max(yawStdDev, pitchStdDev);
+    let currentConfidence = 'low';
+    if (maxStdDev < POSE_STABILITY_THRESHOLD_HIGH) {
+      currentConfidence = 'high';
+    } else if (maxStdDev < POSE_STABILITY_THRESHOLD_MEDIUM) {
+      currentConfidence = 'medium';
+    }
+
+    setPoseConfidence(currentConfidence);
+
     return {
-      Yaw: sumYaw / POSE_HISTORY_LENGTH,
-      Pitch: sumPitch / POSE_HISTORY_LENGTH,
+      Yaw: meanYaw,
+      Pitch: meanPitch,
+      confidence: currentConfidence
     };
   };
 
   const checkLivenessPose = (smoothedPose) => {
-    if (!smoothedPose || livenessStage === 'idle' || livenessStage === 'verifying' || livenessStage === 'complete' || livenessStage === 'failed') return;
+    if (!smoothedPose || smoothedPose.confidence !== 'high' || livenessStage === 'idle' || livenessStage === 'verifying' || livenessStage === 'complete' || livenessStage === 'failed') {
+      if (smoothedPose?.confidence !== 'high' && poseHoldStateRef.current.targetPose) {
+        poseHoldStateRef.current = { targetPose: null, startTime: null };
+      }
+      return;
+    }
 
     const { Yaw: yaw, Pitch: pitch } = smoothedPose;
     const YAW_THRESHOLD = 18;
@@ -237,6 +273,8 @@ export default function UserRegistrationForm() {
           poseHoldStateRef.current = { targetPose: null, startTime: null };
           poseHistoryRef.current = [];
           setIsInTargetZone(false);
+          setDetecting(false);
+          setPoseConfidence('calculating');
 
           const currentIndex = requiredMovements.indexOf(livenessStage);
           const nextIndex = currentIndex + 1;
@@ -462,6 +500,7 @@ export default function UserRegistrationForm() {
     poseHistoryRef.current = [];
     poseHoldStateRef.current = { targetPose: null, startTime: null };
     setIsInTargetZone(false);
+    setPoseConfidence('calculating');
   };
 
   const handleVerificationComplete = () => {
@@ -650,8 +689,13 @@ export default function UserRegistrationForm() {
                  )}
                   {isInTargetZone && !verifying && livenessStage !== 'failed' && (
                      <span className={`text-sm font-semibold ${poseHoldStateRef.current.targetPose === livenessStage ? 'text-green-600 animate-pulse' : 'text-blue-600'}`}>
-                        {poseHoldStateRef.current.targetPose === livenessStage ? 'Hold...' : 'Detected!'}
+                         {poseHoldStateRef.current.targetPose === livenessStage && poseConfidence === 'high' ? 'Hold...' : (poseConfidence === 'high' ? 'Detected!' : '')}
                      </span>
+                  )}
+                  {poseConfidence !== 'high' && requiredMovements.includes(livenessStage) && !verifying && livenessStage !== 'failed' && (
+                      <span className="text-xs text-amber-600 animate-pulse">
+                          {poseConfidence === 'calculating' ? 'Initializing...' : 'Hold Still...'}
+                      </span>
                   )}
               </div>
 
