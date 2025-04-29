@@ -15,6 +15,9 @@ export default async function handler(req, res) {
     // Optional: Add settings like AuditImagesLimit, OutputConfig (for S3 storage) if needed
     const command = new CreateFaceLivenessSessionCommand({}); 
     
+    const resolvedRegion = await client.config.region();
+    console.log(`[DEBUG] Rekognition client configured for region: ${resolvedRegion}`);
+
     console.log("Attempting to create liveness session...");
     const response = await client.send(command);
     
