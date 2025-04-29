@@ -25,8 +25,8 @@ export default function UserRegistrationForm() {
 
   const [poseHoldTimer, setPoseHoldTimer] = useState(null);
   const [poseStartTime, setPoseStartTime] = useState(null);
-  const POSE_HOLD_DURATION = 500; // ms to hold the pose
-  const POSE_STAGE_TIMEOUT = 15000; // ms before stage times out
+  const POSE_HOLD_DURATION = 750; // ms to hold the pose
+  const POSE_STAGE_TIMEOUT = 30000; // ms before stage times out
 
   // State for visual debugging on mobile
   const [debugReadyState, setDebugReadyState] = useState(null);
