@@ -39,14 +39,10 @@ export default function UserRegistrationForm() {
   const [livenessStage, setLivenessStage] = useState('idle');
   const [livenessProgress, setLivenessProgress] = useState({
     center: false,
-    up: false,
-    down: false,
-    left: false,
-    right: false,
     blink: false,
     smile: false,
   });
-  const requiredMovements = ['center', 'up', 'down', 'left', 'right', 'blink', 'smile'];
+  const requiredMovements = ['center', 'blink', 'smile'];
   const faceDetailsRef = useRef(null);
 
   const videoRef = useRef(null);
@@ -179,7 +175,7 @@ export default function UserRegistrationForm() {
     setFacePresent(false);
     lastDetectionTime.current = 0;
     setLivenessStage('idle');
-    setLivenessProgress({ center: false, up: false, down: false, left: false, right: false, blink: false, smile: false });
+    setLivenessProgress({ center: false, blink: false, smile: false });
     faceDetailsRef.current = null;
     setFaceError(null);
     setVerifying(false);
@@ -217,48 +213,19 @@ export default function UserRegistrationForm() {
     let isChallengeMet = false;
     let feedbackMsg = null;
 
-    // Check pose first for pose-based stages
-    if (['center', 'up', 'down', 'left', 'right'].includes(livenessStage)) {
+    // Check pose first only for the 'center' stage
+    if (livenessStage === 'center') {
         if (!pose || typeof pose.Yaw !== 'number' || typeof pose.Pitch !== 'number') {
-            console.warn("Invalid pose data received:", pose);
+            console.warn("Invalid pose data received for center check:", pose);
             setFaceError("Could not read head pose. Try adjusting lighting or position.");
             if (poseHoldTimer) clearTimeout(poseHoldTimer);
             setPoseHoldTimer(null);
             return;
         }
         const { Yaw: yaw, Pitch: pitch } = pose;
+        if (Math.abs(yaw) < 7 && Math.abs(pitch) < 7) isChallengeMet = true;
+        else feedbackMsg = "Keep looking straight ahead.";
 
-        switch (livenessStage) {
-          case 'center':
-            if (Math.abs(yaw) < 7 && Math.abs(pitch) < 7) isChallengeMet = true;
-            else feedbackMsg = "Keep looking straight ahead.";
-            break;
-          case 'up':
-            if (pitch < -PITCH_THRESHOLD && Math.abs(yaw) < YAW_THRESHOLD) isChallengeMet = true;
-            else if (pitch < -PITCH_THRESHOLD * NEAR_THRESHOLD_FACTOR && Math.abs(yaw) < YAW_THRESHOLD * 1.5) feedbackMsg = "Tilt head up a bit more.";
-            else if (Math.abs(yaw) >= YAW_THRESHOLD) feedbackMsg = "Keep head centered while tilting up.";
-            else feedbackMsg = "Slowly tilt head upwards.";
-            break;
-          case 'down':
-            if (pitch > PITCH_THRESHOLD && Math.abs(yaw) < YAW_THRESHOLD) isChallengeMet = true;
-            else if (pitch > PITCH_THRESHOLD * NEAR_THRESHOLD_FACTOR && Math.abs(yaw) < YAW_THRESHOLD * 1.5) feedbackMsg = "Tilt head down a bit more.";
-            else if (Math.abs(yaw) >= YAW_THRESHOLD) feedbackMsg = "Keep head centered while tilting down.";
-            else feedbackMsg = "Slowly tilt head downwards.";
-            break;
-          case 'left':
-            if (yaw > YAW_THRESHOLD && Math.abs(pitch) < PITCH_THRESHOLD) isChallengeMet = true;
-            else if (yaw > YAW_THRESHOLD * NEAR_THRESHOLD_FACTOR && Math.abs(pitch) < PITCH_THRESHOLD * 1.5) feedbackMsg = "Turn head left a bit more.";
-            else if (Math.abs(pitch) >= PITCH_THRESHOLD) feedbackMsg = "Keep head level while turning left.";
-            else feedbackMsg = "Slowly turn head to your left.";
-            break;
-          case 'right':
-            if (yaw < -YAW_THRESHOLD && Math.abs(pitch) < PITCH_THRESHOLD) isChallengeMet = true;
-            else if (yaw < -YAW_THRESHOLD * NEAR_THRESHOLD_FACTOR && Math.abs(pitch) < PITCH_THRESHOLD * 1.5) feedbackMsg = "Turn head right a bit more.";
-            else if (Math.abs(pitch) >= PITCH_THRESHOLD) feedbackMsg = "Keep head level while turning right.";
-            else feedbackMsg = "Slowly turn head to your right.";
-            break;
-           default: break;
-        }
     } else if (livenessStage === 'blink') {
         if (!eyesOpen || typeof eyesOpen.Value !== 'boolean' || typeof eyesOpen.Confidence !== 'number') {
             console.warn("Invalid eyesOpen data received:", eyesOpen);
@@ -529,7 +496,7 @@ export default function UserRegistrationForm() {
     setShowRetryOptions(false);
     setFaceDetectionPaused(false);
     lastDetectionTime.current = 0;
-    setLivenessProgress({ center: false, up: false, down: false, left: false, right: false, blink: false, smile: false });
+    setLivenessProgress({ center: false, blink: false, smile: false });
     setLivenessStage('center');
     setFaceError(null);
     faceDetailsRef.current = null;
@@ -666,10 +633,6 @@ export default function UserRegistrationForm() {
       switch (livenessStage) {
         case 'idle': return 'Get ready for the liveness check.';
         case 'center': return 'Look straight ahead at the camera.';
-        case 'up': return 'Slowly tilt your head upwards.';
-        case 'down': return 'Slowly tilt your head downwards.';
-        case 'left': return 'Slowly turn your head to your left.';
-        case 'right': return 'Slowly turn your head to your right.';
         case 'blink': return 'Blink both eyes now.';
         case 'smile': return 'Smile naturally now.';
         case 'verifying': return 'Verifying your identity... Please hold still.';
@@ -827,7 +790,7 @@ export default function UserRegistrationForm() {
                  if (poseHoldTimer) clearTimeout(poseHoldTimer);
                  setPoseHoldTimer(null);
                  setShowRetryOptions(false);
-                 setLivenessProgress({ center: false, up: false, down: false, left: false, right: false, blink: false, smile: false });
+                 setLivenessProgress({ center: false, blink: false, smile: false });
               }}
               className="px-6 py-3 bg-yellow-500 hover:bg-yellow-400 text-black rounded-full shadow-md font-semibold text-lg transition-all duration-200 ease-in-out transform hover:scale-105"
             >
