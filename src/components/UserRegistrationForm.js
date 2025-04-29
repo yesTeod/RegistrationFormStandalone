@@ -268,35 +268,29 @@ export default function UserRegistrationForm() {
 
 
     if (isChallengeMet) {
-        setLivenessFeedback("Hold position...");
-        if (!poseHoldTimer) {
-            console.log(`Liveness: Correct action detected for ${livenessStage}, starting hold timer.`);
-            const timerId = setTimeout(() => {
-                console.log(`Liveness: Action hold confirmed for ${livenessStage}.`);
-                setLivenessProgress(prev => ({ ...prev, [livenessStage]: true }));
-                setFaceError(null);
-                setLivenessFeedback(null);
-                setPoseHoldTimer(null);
-                setPoseStartTime(null);
+        console.log(`Liveness: Correct action detected for ${livenessStage}. Proceeding immediately.`);
+        setLivenessProgress(prev => ({ ...prev, [livenessStage]: true }));
+        setFaceError(null);
+        setLivenessFeedback(null);
+        if (poseHoldTimer) clearTimeout(poseHoldTimer);
+        setPoseHoldTimer(null);
+        setPoseStartTime(null);
 
-                const currentIndex = requiredMovements.indexOf(livenessStage);
-                const nextIndex = currentIndex + 1;
+        const currentIndex = requiredMovements.indexOf(livenessStage);
+        const nextIndex = currentIndex + 1;
 
-                if (nextIndex < requiredMovements.length) {
-                    setLivenessStage(requiredMovements[nextIndex]);
-                    setPoseStartTime(Date.now());
-                } else {
-                    console.log("Liveness: All movements detected.");
-                    setFaceDetectionPaused(true);
-                    setLivenessStage('verifying');
-                    captureAndVerify();
-                }
-            }, POSE_HOLD_DURATION);
-            setPoseHoldTimer(timerId);
+        if (nextIndex < requiredMovements.length) {
+            setLivenessStage(requiredMovements[nextIndex]);
+            setPoseStartTime(Date.now());
+        } else {
+            console.log("Liveness: All movements detected.");
+            setFaceDetectionPaused(true);
+            setLivenessStage('verifying');
+            captureAndVerify();
         }
     } else {
         if (poseHoldTimer) {
-            console.log(`Liveness: Action incorrect for ${livenessStage}, clearing hold timer.`);
+            console.log(`Liveness: Action incorrect for ${livenessStage}, clearing any previous hold timer.`);
             clearTimeout(poseHoldTimer);
             setPoseHoldTimer(null);
         }
