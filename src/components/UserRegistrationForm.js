@@ -31,6 +31,9 @@ export default function UserRegistrationForm() {
   const [turnedRight, setTurnedRight] = useState(false);
   const [faceBoundingBox, setFaceBoundingBox] = useState(null);
   const [challengeText, setChallengeText] = useState("");
+  const [isCheckingUser, setIsCheckingUser] = useState(false);
+  const [loginError, setLoginError] = useState(null);
+  const [userData, setUserData] = useState(null);
 
   const videoRef = useRef(null);
   const faceVideoRef = useRef(null);
@@ -45,16 +48,60 @@ export default function UserRegistrationForm() {
 
   const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
-  const handleFormSubmit = () => {
-    startCamera();
-    handleFlip("camera", "right");
+  const handleFormSubmit = async () => {
+    if (!email || !password) {
+      alert("Please enter both email and password");
+      return;
+    }
+    
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      alert("Please enter a valid email address");
+      return;
+    }
+    
+    if (password.length < 8 || !/[A-Za-z]/.test(password) || !/[0-9]/.test(password)) {
+      alert("Password must be at least 8 characters and include both letters and numbers");
+      return;
+    }
+
+    setIsCheckingUser(true);
+    setLoginError(null);
+    
+    try {
+      const response = await fetch('/api/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password })
+      });
+      
+      const data = await response.json();
+      
+      if (response.ok && data.success) {
+        console.log("User logged in successfully:", data);
+        setUserData(data);
+        handleFlip("loggedIn", "right");
+      } else if (data.code === 'EMAIL_NOT_FOUND') {
+        console.log("User doesn't exist, continuing with registration");
+        startCamera();
+        handleFlip("camera", "right");
+      } else if (data.code === 'INCORRECT_PASSWORD') {
+        setLoginError("Incorrect password");
+      } else {
+        setLoginError(data.error || "Login failed");
+      }
+    } catch (error) {
+      console.error("Error checking user:", error);
+      setLoginError("Network error, please try again");
+    } finally {
+      setIsCheckingUser(false);
+    }
   };
 
   const capturePhoto = async () => {
     if (videoRef.current && canvasRef.current) {
       const video = videoRef.current;
       const canvas = canvasRef.current;
-      // Set canvas dimensions to match the video feed for a clear capture.
       canvas.width = video.videoWidth || 320;
       canvas.height = video.videoHeight || 240;
       const context = canvas.getContext("2d");
@@ -81,7 +128,6 @@ export default function UserRegistrationForm() {
     }
   };
 
-  // Handle file upload without compression.
   const handleFileUpload = async (event) => {
     const file = event.target.files[0];
     if (!file) return;
@@ -138,7 +184,6 @@ export default function UserRegistrationForm() {
 
   const startCamera = (facing = "environment", targetRef = videoRef) => {
     setCameraStatus("pending");
-    // Request a higher resolution stream for a clear, crisp feed.
     navigator.mediaDevices
       .getUserMedia({
         video: {
@@ -179,9 +224,9 @@ export default function UserRegistrationForm() {
 
   const handleSubmit = async () => {
     stopCamera();
-    await delay(300); // wait for camera to stop cleanly
+    await delay(300);
     await handleFlip("verification", "right");
-    await delay(200); // wait for DOM to update
+    await delay(200);
     setFaceVerified(null);
     setVerificationAttempts(0);
     setShowRetryOptions(false);
@@ -196,12 +241,10 @@ export default function UserRegistrationForm() {
     startCamera("user", faceVideoRef);
   };
 
-  // Face detection with rate limiting
   const detectFaceOnServer = async (dataURL) => {
-    // Check if throttling needed - only call API every 3 seconds
     const now = Date.now();
     if (now - lastDetectionTime.current < 3000 || faceDetectionPaused) {
-      return; // Skip this detection cycle
+      return;
     }
     
     setDetecting(true);
@@ -221,7 +264,6 @@ export default function UserRegistrationForm() {
       } else {
         setFaceDetected(json.faceDetected);
         
-        // Store face bounding box for UI positioning
         if (json.faceDetected && json.boundingBox) {
           setFaceBoundingBox(json.boundingBox);
         }
@@ -234,12 +276,10 @@ export default function UserRegistrationForm() {
     }
   };
 
-  // Liveness check function with rate limiting - separate from face detection
   const checkLiveness = async (dataURL) => {
-    // Rate limit to every 2 seconds
     const now = Date.now();
     if (now - lastLivenessCheckTime.current < 2000 || !livenessCheckActive || faceDetectionPaused) {
-      return; // Skip this liveness check cycle
+      return;
     }
     
     lastLivenessCheckTime.current = now;
@@ -253,29 +293,21 @@ export default function UserRegistrationForm() {
       const json = await res.json();
       
       if (res.ok && json.faceDetected) {
-        // Store face bounding box for UI positioning (we'll still store it even though we won't use it for positioning)
         if (json.boundingBox) {
           setFaceBoundingBox(json.boundingBox);
         }
         
-        // Process liveness actions based on current step
         if (liveChallengeStep === 1 && json.isBlinking) {
-          // Detected blinking
           setBlinked(true);
-          // Skip smile challenge and move directly to turn left
           setLiveChallengeStep(2);
           setChallengeText("Great! Now turn your head left");
         } else if (liveChallengeStep === 2 && json.headPose && json.headPose.yaw < -15) {
-          // Detected head turn left (negative yaw value)
           setTurnedLeft(true);
-          // Move to turn right challenge
           setLiveChallengeStep(3);
           setChallengeText("Excellent! Now turn your head right");
         } else if (liveChallengeStep === 3 && json.headPose && json.headPose.yaw > 15) {
-          // Detected head turn right (positive yaw value)
           setTurnedRight(true);
           
-          // If all challenges passed
           if (blinked && turnedLeft) {
             setLivenessVerified(true);
             setLivenessCheckActive(false);
@@ -288,23 +320,19 @@ export default function UserRegistrationForm() {
     }
   };
 
-  // Start liveness verification process
   const startLivenessCheck = () => {
-    // Reset liveness states
     setBlinked(false);
     setTurnedLeft(false);
     setTurnedRight(false);
     setLivenessVerified(false);
-    // Start with blink challenge
     setLiveChallengeStep(1);
     setChallengeText("Please blink your eyes");
     setLivenessCheckActive(true);
-    lastLivenessCheckTime.current = 0; // Reset timer to allow immediate first check
+    lastLivenessCheckTime.current = 0;
   };
 
-  // Calculate progress percentage based on completed challenges
   const calculateLivenessProgress = () => {
-    const totalSteps = 3; // Blink, turn left, turn right (removed smile)
+    const totalSteps = 3;
     let completedSteps = 0;
     
     if (blinked) completedSteps++;
@@ -314,20 +342,17 @@ export default function UserRegistrationForm() {
     return (completedSteps / totalSteps) * 100;
   };
   
-  // Get the appropriate oval guide color based on the current step
   const getGuideColor = () => {
-    if (liveChallengeStep === 1) return "blue"; // Blink
-    if (liveChallengeStep === 2) return "green"; // Turn left
-    if (liveChallengeStep === 3) return "purple"; // Turn right
+    if (liveChallengeStep === 1) return "blue";
+    if (liveChallengeStep === 2) return "green";
+    if (liveChallengeStep === 3) return "purple";
     return "gray";
   };
 
-  // Reset verification state for retry
   const handleRetryVerification = () => {
     setFaceVerified(null);
     setShowRetryOptions(false);
     setFaceDetectionPaused(false);
-    // Reset liveness states
     setBlinked(false);
     setTurnedLeft(false);
     setTurnedRight(false);
@@ -335,11 +360,10 @@ export default function UserRegistrationForm() {
     setLiveChallengeStep(0);
     setLivenessCheckActive(false);
     setChallengeText("");
-    lastDetectionTime.current = 0; // Reset timer to allow immediate detection
+    lastDetectionTime.current = 0;
     lastLivenessCheckTime.current = 0;
   };
 
-  // On verification step, poll for face detection with rate limiting
   useEffect(() => {
     let interval;
     if (step === 'verification' && !faceDetectionPaused) {
@@ -347,19 +371,17 @@ export default function UserRegistrationForm() {
         if (faceCanvasRef.current) {
           const canvas = faceCanvasRef.current;
           const context = canvas.getContext("2d");
-          // Make sure video is ready
           if (faceVideoRef.current && faceVideoRef.current.readyState >= 2) {
             context.drawImage(faceVideoRef.current, 0, 0, 320, 240);
             const dataURL = canvas.toDataURL('image/png');
             detectFaceOnServer(dataURL);
           }
         }
-      }, 1000); // Check every second, but API calls are throttled internally
+      }, 1000);
     }
     return () => clearInterval(interval);
   }, [step, faceDetectionPaused]);
 
-  // Separate effect for liveness checks
   useEffect(() => {
     let interval;
     if (step === 'verification' && livenessCheckActive && !faceDetectionPaused) {
@@ -367,19 +389,17 @@ export default function UserRegistrationForm() {
         if (faceCanvasRef.current) {
           const canvas = faceCanvasRef.current;
           const context = canvas.getContext("2d");
-          // Make sure video is ready
           if (faceVideoRef.current && faceVideoRef.current.readyState >= 2) {
             context.drawImage(faceVideoRef.current, 0, 0, 320, 240);
             const dataURL = canvas.toDataURL('image/png');
             checkLiveness(dataURL);
           }
         }
-      }, 2000); // Check every 2 seconds for liveness
+      }, 2000);
     }
     return () => clearInterval(interval);
   }, [step, livenessCheckActive, faceDetectionPaused, liveChallengeStep, blinked]);
 
-  // AWS Rekognition call
   const verifyFace = async () => {
     // Start liveness verification first
     if (!livenessVerified && !livenessCheckActive) {
@@ -418,7 +438,16 @@ export default function UserRegistrationForm() {
       
       if (!data.match) {
         setVerificationAttempts(prev => prev + 1);
-        setShowRetryOptions(true);
+        
+        // If we've reached maximum verification attempts, reject the registration
+        if (verificationAttempts >= 2) {
+          // Short delay to show the failure message before transitioning
+          setTimeout(() => {
+            handleFlip("registrationFailed", "right");
+          }, 1500);
+        } else {
+          setShowRetryOptions(true);
+        }
       }
     } catch (err) {
       console.error("Face verification error:", err);
@@ -430,15 +459,13 @@ export default function UserRegistrationForm() {
     }
   };
 
-  // --- Verify via upload ---
   const handleSelfieUpload = (e) => {
     const file = e.target.files[0];
     if (!file) return;
     setVerifying(true);
     setShowRetryOptions(false);
-    setFaceDetectionPaused(true); // Pause detection during verification
+    setFaceDetectionPaused(true);
     
-    // Skip liveness check for uploaded selfies - we're assuming the user is providing a legitimate selfie
     setBlinked(true);
     setTurnedLeft(true);
     setTurnedRight(true);
@@ -457,7 +484,6 @@ export default function UserRegistrationForm() {
         });
         
         if (!res.ok) {
-          // Handle HTTP error responses
           const errorData = await res.json().catch(() => ({ error: 'Unknown error' }));
           console.error("Face verification failed:", res.status, errorData);
           setFaceVerified(false);
@@ -485,34 +511,34 @@ export default function UserRegistrationForm() {
     reader.readAsDataURL(file);
   };
 
-  // Return to completed step or go to success if verification is successful
   const handleVerificationComplete = () => {
     if (faceVerified) {
-      handleFlip("success", "right");
+      // Save the registration with ID details
+      saveRegistration();
     } else {
-      // This shouldn't typically happen as the button is only shown in success case
-      handleFlip("completed", "left");
+      // If face verification failed definitively, show the failure screen
+      if (verificationAttempts >= 3) {
+        handleFlip("registrationFailed", "right");
+      } else {
+        // Otherwise go back to ID step
+        handleFlip("completed", "left");
+      }
     }
-  }
+  };
 
-  // This helper function compresses the image dataURL for OCR.
   function compressImageForOCR(dataURL, quality = 0.9) {
     return new Promise((resolve) => {
       const img = new Image();
       img.src = dataURL;
       img.onload = () => {
         const canvas = document.createElement('canvas');
-        // Optionally, you can also reduce dimensions here if needed.
         canvas.width = img.width;
         canvas.height = img.height;
         const ctx = canvas.getContext('2d');
         ctx.drawImage(img, 0, 0);
-        // Convert image to JPEG with the specified quality.
         const compressedDataURL = canvas.toDataURL('image/jpeg', quality);
-        // Estimate file size in KB (base64 encoding approximates to 3/4 the length in bytes)
         const fileSizeKb = Math.round((compressedDataURL.length * (3 / 4)) / 1024);
         if (fileSizeKb > 1024 && quality > 0.1) {
-          // Reduce quality further if file size is still too high.
           compressImageForOCR(dataURL, quality - 0.1).then(resolve);
         } else {
           resolve(compressedDataURL);
@@ -525,7 +551,6 @@ export default function UserRegistrationForm() {
     try {
       setIsExtracting(true);
 
-      // Estimate file size and compress if necessary.
       const fileSizeKb = Math.round((imageData.length * (3 / 4)) / 1024);
       let processedImage = imageData;
       if (fileSizeKb > 1024) {
@@ -560,26 +585,20 @@ export default function UserRegistrationForm() {
     }
   }
 
-  // Trigger OCR extraction when registration is completed.
   useEffect(() => {
     if (step === "completed" && photoFront && photoBack && !idDetails && !backIdDetails && !isExtracting) {
-      // Extract front ID details
       extractIdDetails(photoFront, true).then((frontDetails) => {
         console.log("Extracted Front ID Details:", frontDetails);
         setIdDetails(frontDetails);
         
-        // Extract back ID details
         extractIdDetails(photoBack, true).then((backDetails) => {
           console.log("Extracted Back ID Details:", backDetails);
           setBackIdDetails(backDetails);
           
-          // Combine the front and back data, prioritizing actual data over "Not found"
           const combined = {};
           
-          // Merge all keys from both objects
           const allKeys = [...new Set([...Object.keys(frontDetails), ...Object.keys(backDetails)])];
           
-          // For each key, use the value that's not "Not found"
           allKeys.forEach(key => {
             const frontValue = frontDetails[key];
             const backValue = backDetails[key];
@@ -625,7 +644,6 @@ export default function UserRegistrationForm() {
     };
   }, [isFlipping]);
 
-  // Clean up when component unmounts
   useEffect(() => {
     return () => {
       stopCamera();
@@ -640,10 +658,8 @@ export default function UserRegistrationForm() {
         </h2>
 
         <div className="mx-auto w-80 h-60 relative overflow-hidden rounded-lg border">
-          {/* Fixed oval guide overlay centered in the camera view */}
           {faceVerified === null && (
             <div className="absolute inset-0 pointer-events-none">
-              {/* Always centered oval, not trying to snap to face position */}
               <div 
                 className="absolute border-2 border-dashed rounded-full transition-all duration-300"
                 style={{
@@ -657,7 +673,6 @@ export default function UserRegistrationForm() {
                   opacity: 0.7
                 }}
               >
-                {/* Challenge indicators */}
                 {liveChallengeStep === 1 && (
                   <div className="absolute inset-0 flex items-center justify-center">
                     <div className="w-full h-1 bg-blue-400 animate-pulse"></div>
@@ -680,14 +695,12 @@ export default function UserRegistrationForm() {
           <canvas ref={faceCanvasRef} width={320} height={240} className="absolute top-0 left-0 opacity-0" />
         </div>
 
-        {/* Liveness challenge instructions */}
         {faceVerified === null && livenessCheckActive && (
           <div className="bg-yellow-50 p-3 rounded-lg border border-yellow-300">
             <h3 className="text-yellow-800 font-medium">Liveness Check</h3>
             <div className="mt-2">
               <p className="text-yellow-700 font-medium">{challengeText}</p>
               
-              {/* Challenge status indicators */}
               <div className="flex flex-wrap gap-2 justify-center mt-2">
                 <span className={`text-xs px-2 py-1 rounded-full ${blinked ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-500'}`}>
                   {blinked ? '✓ Blink' : '◯ Blink'}
@@ -701,7 +714,6 @@ export default function UserRegistrationForm() {
               </div>
             </div>
             
-            {/* Progress bar */}
             <div className="w-full bg-gray-200 rounded-full h-2 mt-2">
               <div 
                 className="bg-yellow-500 h-2 rounded-full transition-all" 
@@ -711,7 +723,6 @@ export default function UserRegistrationForm() {
           </div>
         )}
 
-        {/* Status indicators - only show when not in liveness check */}
         {faceVerified === null && !livenessCheckActive && (
           <div className="text-sm">
             {detecting && <p className="text-blue-600">Detecting face...</p>}
@@ -721,7 +732,6 @@ export default function UserRegistrationForm() {
           </div>
         )}
 
-        {/* Verification success message */}
         {faceVerified === true && (
           <div className="bg-green-100 p-4 rounded-lg border border-green-300">
             <p className="text-green-700 font-medium text-lg">Identity Verified</p>
@@ -735,7 +745,6 @@ export default function UserRegistrationForm() {
           </div>
         )}
 
-        {/* Verification failure message with guidance */}
         {faceVerified === false && (
           <div className="bg-red-50 p-4 rounded-lg border border-red-200">
             <p className="text-red-700 font-medium text-lg">Verification Failed</p>
@@ -784,7 +793,6 @@ export default function UserRegistrationForm() {
           </div>
         )}
 
-        {/* Action buttons - only show when not displaying result or retry options */}
         {faceVerified === null && !showRetryOptions && (
           <div className="flex justify-center space-x-4">
             <button
@@ -821,6 +829,40 @@ export default function UserRegistrationForm() {
     );
   };
 
+  const saveRegistration = async () => {
+    if (!email || !password || !faceVerified) {
+      console.error("Cannot save registration - missing required data");
+      return;
+    }
+    
+    try {
+      const response = await fetch('/api/save-registration', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          email, 
+          password,
+          idDetails: combinedIdDetails
+        })
+      });
+      
+      const data = await response.json();
+      
+      if (response.ok && data.success) {
+        console.log("Registration saved successfully");
+        handleFlip("success", "right");
+      } else if (data.code === 'USER_EXISTS') {
+        alert("This email is already registered. Please log in instead.");
+        handleFlip("form", "left");
+      } else {
+        alert("Error saving registration: " + (data.error || "Unknown error"));
+      }
+    } catch (error) {
+      console.error("Error saving registration:", error);
+      alert("Network error, please try again");
+    }
+  };
+
   return (
     <div
       ref={containerRef}
@@ -829,13 +871,14 @@ export default function UserRegistrationForm() {
       <style>{`button { border-radius: 10px !important; }`}</style>
       {step === "form" && (
         <div className="space-y-4">
-          <h2 className="text-2xl font-semibold text-gray-800">Register</h2>
+          <h2 className="text-2xl font-semibold text-gray-800">Register or Login</h2>
           <input
             type="email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             placeholder="Email"
             className="w-full p-2 border border-gray-300 rounded-lg"
+            required
           />
           <input
             type="password"
@@ -843,13 +886,26 @@ export default function UserRegistrationForm() {
             onChange={(e) => setPassword(e.target.value)}
             placeholder="Password"
             className="w-full p-2 border border-gray-300 rounded-lg"
+            required
           />
+          
+          {loginError && (
+            <div className="p-2 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
+              {loginError}
+            </div>
+          )}
+          
           <div className="flex justify-center">
             <button
               onClick={handleFormSubmit}
-              className="bg-yellow-400 hover:bg-yellow-300 text-black px-6 py-2 rounded-full shadow-md"
+              disabled={isCheckingUser}
+              className={`${
+                isCheckingUser 
+                  ? "bg-gray-400 cursor-not-allowed" 
+                  : "bg-yellow-400 hover:bg-yellow-300"
+              } text-black px-6 py-2 rounded-full shadow-md`}
             >
-              Continue
+              {isCheckingUser ? "Checking..." : "Continue"}
             </button>
           </div>
         </div>
@@ -955,7 +1011,6 @@ export default function UserRegistrationForm() {
           <h3 className="text-lg text-gray-700">Email: {email}</h3>
           
           <div className="flex flex-col md:flex-row gap-4">
-            {/* Front of ID */}
             <div className="flex-1">
               <div className="relative w-full h-44 bg-gray-300 flex items-center justify-center rounded overflow-hidden">
                 {photoFront ? (
@@ -973,7 +1028,6 @@ export default function UserRegistrationForm() {
               </div>
             </div>
             
-            {/* Back of ID */}
             <div className="flex-1">
               <div className="relative w-full h-44 bg-gray-300 flex items-center justify-center rounded overflow-hidden">
                 {photoBack ? (
@@ -1019,14 +1073,12 @@ export default function UserRegistrationForm() {
             ) : (
               <button
                 onClick={() => {
-                  // Extract both sides if needed
                   if (!idDetails && !backIdDetails) {
                     extractIdDetails(photoFront, true).then(frontDetails => {
                       setIdDetails(frontDetails);
                       extractIdDetails(photoBack, true).then(backDetails => {
                         setBackIdDetails(backDetails);
                         
-                        // Combine with the same improved logic as above
                         const combined = {};
                         const allKeys = [...new Set([...Object.keys(frontDetails), ...Object.keys(backDetails)])];
                         
@@ -1081,6 +1133,27 @@ export default function UserRegistrationForm() {
 
       {step === "verification" && renderVerificationStepContent()}
 
+      {step === "registrationFailed" && (
+        <div className="text-center space-y-6">
+          <div className="text-6xl mb-4">❌</div>
+          <h2 className="text-2xl font-semibold text-gray-800">
+            Registration Failed
+          </h2>
+          <p className="text-gray-600">
+            We were unable to verify your identity.
+          </p>
+          <p className="text-sm text-red-600">
+            Your face could not be matched with your ID document.
+          </p>
+          <button
+            onClick={() => handleFlip("form", "left")}
+            className="px-8 py-3 bg-gray-600 hover:bg-gray-700 text-white rounded-lg shadow-md"
+          >
+            Try Again
+          </button>
+        </div>
+      )}
+
       {step === "success" && (
         <div className="text-center space-y-6">
           <div className="text-6xl mb-4">✅</div>
@@ -1090,6 +1163,38 @@ export default function UserRegistrationForm() {
           <p className="text-gray-600">
             Your identity has been verified successfully.
           </p>
+          <button
+            onClick={() => window.location.href = "/dashboard"}
+            className="px-8 py-3 bg-green-600 hover:bg-green-700 text-white rounded-lg shadow-md"
+          >
+            Go to Dashboard
+          </button>
+        </div>
+      )}
+      
+      {step === "loggedIn" && (
+        <div className="text-center space-y-6">
+          <div className="text-6xl mb-4">👋</div>
+          <h2 className="text-2xl font-semibold text-gray-800">
+            Welcome Back!
+          </h2>
+          <p className="text-gray-600">
+            You are already registered in our system.
+          </p>
+          
+          {userData && (
+            <div className="mt-4 p-4 bg-gray-50 rounded-lg border border-gray-200">
+              <h3 className="text-lg font-medium text-gray-800 mb-2">Your Details</h3>
+              <div className="text-sm text-left space-y-1">
+                <p><span className="font-medium">Email:</span> {userData.email}</p>
+                {userData.name && <p><span className="font-medium">Name:</span> {userData.name}</p>}
+                {userData.dateOfBirth && <p><span className="font-medium">Date of Birth:</span> {userData.dateOfBirth}</p>}
+                {userData.address && <p><span className="font-medium">Address:</span> {userData.address}</p>}
+                <p><span className="font-medium">Status:</span> {userData.status || "Verified"}</p>
+              </div>
+            </div>
+          )}
+          
           <button
             onClick={() => window.location.href = "/dashboard"}
             className="px-8 py-3 bg-green-600 hover:bg-green-700 text-white rounded-lg shadow-md"
