@@ -532,51 +532,22 @@ export default function UserRegistrationForm() {
         processedImage = await compressImageForOCR(imageData);
       }
 
-      // Try with the main edge function endpoint first
-      try {
-        const response = await fetch("/api/extract-id", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ 
-            image: processedImage,
-            englishOnly: englishOnly 
-          }),
-        });
-        
-        if (!response.ok) {
-          throw new Error("OCR primary endpoint failed");
-        }
-        
-        const data = await response.json();
-        if (data.error) {
-          console.warn("Primary API returned an error:", data.error);
-          throw new Error(data.error);
-        }
-        return data;
-      } catch (edgeError) {
-        console.warn("Edge function failed, trying fallback endpoint:", edgeError);
-        
-        // If the edge function fails, try the fallback endpoint
-        const fallbackResponse = await fetch("/api/extract-id-fallback", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ 
-            image: processedImage,
-            englishOnly: englishOnly 
-          }),
-        });
-        
-        if (!fallbackResponse.ok) {
-          throw new Error("OCR fallback endpoint failed");
-        }
-        
-        const fallbackData = await fallbackResponse.json();
-        if (fallbackData.error) {
-          console.warn("Fallback API returned an error:", fallbackData.error);
-          throw new Error(fallbackData.error);
-        }
-        return fallbackData;
+      const response = await fetch("/api/extract-id", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ 
+          image: processedImage,
+          englishOnly: englishOnly 
+        }),
+      });
+      if (!response.ok) {
+        throw new Error("OCR request failed");
       }
+      const data = await response.json();
+      if (data.error) {
+        console.warn("API returned an error:", data.error);
+      }
+      return data;
     } catch (error) {
       console.error("Error extracting ID details:", error);
       return {
