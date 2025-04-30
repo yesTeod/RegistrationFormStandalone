@@ -1,3 +1,7 @@
+// Using AWS SDK for Textract
+import { TextractClient, AnalyzeDocumentCommand } from "@aws-sdk/client-textract";
+
+// This is a Vercel Edge Function - better for long-running processes
 export const config = {
   runtime: 'edge',
   regions: ['iad1'], // US East (N. Virginia)
@@ -24,43 +28,45 @@ export default async function handler(request) {
       );
     }
 
-    // Keep the original data URI format if it exists, or add it if it doesn't
-    const base64Image = image.startsWith('data:image/') 
-      ? image 
-      : `data:image/jpeg;base64,${image}`;
-    
-    // Call OCR.space API
-    const formData = {
-      base64Image: base64Image,
-      apikey: process.env.OCR_SPACE_API_KEY || 'helloworld',
-      language: 'eng', // Always use English for OCR
-      isOverlayRequired: false,
-      scale: true,
-      OCREngine: 2, // More accurate engine
-      detectOrientation: true, // Auto-detect image orientation
-      filetype: 'jpg'  // Use lowercase 'jpg'
-    };
-
-    console.log('Sending request to OCR.space...');
-    
-    const ocrResponse = await fetch('https://api.ocr.space/parse/image', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-      },
-      body: new URLSearchParams(formData).toString()
-    });
-    
-    if (!ocrResponse.ok) {
-      throw new Error(`OCR API responded with status: ${ocrResponse.status}`);
+    // Extract base64 data from the data URI
+    let base64Image = image;
+    if (image.startsWith('data:image/')) {
+      const base64Data = image.split(',')[1];
+      base64Image = base64Data;
     }
 
-    const ocrResult = await ocrResponse.json();
-    console.log('OCR Response:', JSON.stringify(ocrResult, null, 2));
+    // Convert base64 to binary
+    const binaryImage = Buffer.from(base64Image, 'base64');
     
-    if (!ocrResult.IsErroredOnProcessing && ocrResult.ParsedResults && ocrResult.ParsedResults.length > 0) {
-      const extractedText = ocrResult.ParsedResults[0].ParsedText;
-      console.log("OCR Extracted Text:", extractedText);
+    // Configure AWS client
+    const textractClient = new TextractClient({
+      region: process.env.AWS_REGION || 'us-east-1',
+      credentials: {
+        accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+        secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+      }
+    });
+
+    // Prepare Textract request
+    const params = {
+      Document: {
+        Bytes: binaryImage
+      },
+      FeatureTypes: ['FORMS', 'TABLES']
+    };
+
+    console.log('Sending request to AWS Textract...');
+    
+    // Call Textract service
+    const command = new AnalyzeDocumentCommand(params);
+    const textractResponse = await textractClient.send(command);
+    
+    console.log('Textract Response Received');
+    
+    if (textractResponse.Blocks) {
+      // Extract the full text from Textract response
+      const extractedText = extractTextFromBlocks(textractResponse.Blocks);
+      console.log("Textract Extracted Text:", extractedText);
       
       // Filter the text to English-only characters if requested
       const processedText = englishOnly ? 
@@ -69,23 +75,31 @@ export default async function handler(request) {
       
       console.log("Processed Text (englishOnly=" + englishOnly + "):", processedText);
       
-      // Use updated function to extract name and father's name
-      const nameDetails = extractNameFromText(processedText);
+      // Extract form fields directly from Textract response
+      const formFields = extractFormFields(textractResponse.Blocks);
+      console.log("Extracted Form Fields:", formFields);
       
-      // Extract additional ID details
-      const dateOfBirth = extractDateOfBirth(processedText);
-      const placeOfBirth = extractPlaceOfBirth(processedText);
-      const nationality = extractNationality(processedText);
-      const gender = extractGender(processedText);
-      const address = extractAddress(processedText);
-      const issuingAuthority = extractIssuingAuthority(processedText);
-      const issueDate = extractIssueDate(processedText);
+      // Extract key-value pairs directly for ID fields
+      const nameDetails = {
+        name: findValueByKey(formFields, ["name", "given name", "first name"]) || extractNameFromText(processedText),
+        fatherName: findValueByKey(formFields, ["father's name", "surname", "last name", "family name"]) || "Not found"
+      };
+      
+      const dateOfBirth = findValueByKey(formFields, ["date of birth", "dob", "birth date"]) || extractDateOfBirth(processedText);
+      const idNumber = findValueByKey(formFields, ["id number", "document number", "card number", "id"]) || extractIdNumberFromText(processedText);
+      const expiry = findValueByKey(formFields, ["expiry date", "expiration date", "valid until"]) || extractExpiryFromText(processedText);
+      const placeOfBirth = findValueByKey(formFields, ["place of birth", "birth place"]) || extractPlaceOfBirth(processedText);
+      const nationality = findValueByKey(formFields, ["nationality", "citizenship"]) || extractNationality(processedText);
+      const gender = findValueByKey(formFields, ["gender", "sex"]) || extractGender(processedText);
+      const address = findValueByKey(formFields, ["address", "residence"]) || extractAddress(processedText);
+      const issuingAuthority = findValueByKey(formFields, ["issuing authority", "issued by", "authority"]) || extractIssuingAuthority(processedText);
+      const issueDate = findValueByKey(formFields, ["date of issue", "issue date", "issued on"]) || extractIssueDate(processedText);
       
       const idDetails = {
         name: nameDetails.name,
         fatherName: nameDetails.fatherName,
-        idNumber: extractIdNumberFromText(processedText),
-        expiry: extractExpiryFromText(processedText),
+        idNumber,
+        expiry,
         dateOfBirth,
         placeOfBirth,
         nationality,
@@ -103,11 +117,10 @@ export default async function handler(request) {
         { status: 200, headers: { 'Content-Type': 'application/json' } }
       );
     } else {
-      const errorMessage = ocrResult.ErrorMessage || ocrResult.ErrorDetails || "Unknown OCR processing error";
-      console.error("OCR Processing Error:", errorMessage);
+      console.error("Textract Processing Error: No text blocks found");
       return new Response(
         JSON.stringify({ 
-          error: errorMessage, 
+          error: "No text detected in image", 
           name: "Not found", 
           fatherName: "Not found",
           idNumber: "Not found", 
@@ -118,12 +131,7 @@ export default async function handler(request) {
           gender: "Not found",
           address: "Not found",
           issuingAuthority: "Not found",
-          issueDate: "Not found",
-          debug: { 
-            isErrored: ocrResult.IsErroredOnProcessing,
-            hasResults: Boolean(ocrResult.ParsedResults),
-            resultCount: ocrResult.ParsedResults?.length || 0
-          }
+          issueDate: "Not found"
         }),
         { status: 200, headers: { 'Content-Type': 'application/json' } }
       );
@@ -148,6 +156,95 @@ export default async function handler(request) {
       { status: 200, headers: { 'Content-Type': 'application/json' } }
     );
   }
+}
+
+// Extract text from Textract blocks
+function extractTextFromBlocks(blocks) {
+  let fullText = '';
+  const lineBlocks = blocks.filter(block => block.BlockType === 'LINE');
+  
+  lineBlocks.forEach(block => {
+    fullText += block.Text + '\n';
+  });
+  
+  return fullText;
+}
+
+// Extract form fields from Textract response
+function extractFormFields(blocks) {
+  const keyMap = new Map();
+  const valueMap = new Map();
+  const keyValueMap = new Map();
+
+  // First pass: collect all the blocks
+  blocks.forEach(block => {
+    if (block.BlockType === 'KEY_VALUE_SET') {
+      if (block.EntityTypes.includes('KEY')) {
+        keyMap.set(block.Id, block);
+      } else {
+        valueMap.set(block.Id, block);
+      }
+    }
+  });
+
+  // Second pass: link keys to values
+  blocks.forEach(block => {
+    if (block.BlockType === 'KEY_VALUE_SET' && block.EntityTypes.includes('KEY')) {
+      const key = getTextFromRelationships(blocks, block, 'CHILD');
+      
+      // Find the value block that this key links to
+      if (block.Relationships) {
+        block.Relationships.forEach(relationship => {
+          if (relationship.Type === 'VALUE') {
+            relationship.Ids.forEach(valueId => {
+              const valueBlock = valueMap.get(valueId);
+              if (valueBlock) {
+                const value = getTextFromRelationships(blocks, valueBlock, 'CHILD');
+                if (key && value) {
+                  keyValueMap.set(key.toLowerCase(), value);
+                }
+              }
+            });
+          }
+        });
+      }
+    }
+  });
+
+  return Object.fromEntries(keyValueMap);
+}
+
+// Get text from relationships
+function getTextFromRelationships(blocks, block, relType) {
+  if (!block.Relationships) {
+    return null;
+  }
+  
+  let text = '';
+  
+  block.Relationships.forEach(relationship => {
+    if (relationship.Type === relType) {
+      relationship.Ids.forEach(id => {
+        const childBlock = blocks.find(b => b.Id === id);
+        if (childBlock && childBlock.Text) {
+          text += childBlock.Text + ' ';
+        }
+      });
+    }
+  });
+  
+  return text.trim();
+}
+
+// Find a value by multiple possible keys
+function findValueByKey(formFields, possibleKeys) {
+  for (const key of possibleKeys) {
+    const value = formFields[key.toLowerCase()];
+    if (value) {
+      return value;
+    }
+  }
+  return null;
 }
 
 // Helper function to extract the "Name" and "Father's name" from OCR text based on label matching
