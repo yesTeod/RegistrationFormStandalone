@@ -521,7 +521,7 @@ export default function UserRegistrationForm() {
     });
   }
 
-  async function extractIdDetails(imageData) {
+  async function extractIdDetails(imageData, englishOnly = false) {
     try {
       setIsExtracting(true);
 
@@ -535,7 +535,10 @@ export default function UserRegistrationForm() {
       const response = await fetch("/api/extract-id", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ image: processedImage }),
+        body: JSON.stringify({ 
+          image: processedImage,
+          englishOnly: englishOnly 
+        }),
       });
       if (!response.ok) {
         throw new Error("OCR request failed");
@@ -561,24 +564,34 @@ export default function UserRegistrationForm() {
   useEffect(() => {
     if (step === "completed" && photoFront && photoBack && !idDetails && !backIdDetails && !isExtracting) {
       // Extract front ID details
-      extractIdDetails(photoFront).then((frontDetails) => {
+      extractIdDetails(photoFront, true).then((frontDetails) => {
         console.log("Extracted Front ID Details:", frontDetails);
         setIdDetails(frontDetails);
         
         // Extract back ID details
-        extractIdDetails(photoBack).then((backDetails) => {
+        extractIdDetails(photoBack, true).then((backDetails) => {
           console.log("Extracted Back ID Details:", backDetails);
           setBackIdDetails(backDetails);
           
-          // Combine the front and back data
-          const combined = {
-            ...frontDetails,
-            ...backDetails,
-            // Override with back details only if front had "Not found"
-            name: frontDetails.name !== "Not found" ? frontDetails.name : backDetails.name,
-            idNumber: frontDetails.idNumber !== "Not found" ? frontDetails.idNumber : backDetails.idNumber,
-            expiry: frontDetails.expiry !== "Not found" ? frontDetails.expiry : backDetails.expiry,
-          };
+          // Combine the front and back data, prioritizing actual data over "Not found"
+          const combined = {};
+          
+          // Merge all keys from both objects
+          const allKeys = [...new Set([...Object.keys(frontDetails), ...Object.keys(backDetails)])];
+          
+          // For each key, use the value that's not "Not found"
+          allKeys.forEach(key => {
+            const frontValue = frontDetails[key];
+            const backValue = backDetails[key];
+            
+            if (frontValue && frontValue !== "Not found") {
+              combined[key] = frontValue;
+            } else if (backValue && backValue !== "Not found") {
+              combined[key] = backValue;
+            } else {
+              combined[key] = frontValue || backValue || "Not found";
+            }
+          });
           
           setCombinedIdDetails(combined);
           console.log("Combined ID Details:", combined);
@@ -1008,17 +1021,28 @@ export default function UserRegistrationForm() {
                 onClick={() => {
                   // Extract both sides if needed
                   if (!idDetails && !backIdDetails) {
-                    extractIdDetails(photoFront).then(frontDetails => {
+                    extractIdDetails(photoFront, true).then(frontDetails => {
                       setIdDetails(frontDetails);
-                      extractIdDetails(photoBack).then(backDetails => {
+                      extractIdDetails(photoBack, true).then(backDetails => {
                         setBackIdDetails(backDetails);
-                        const combined = {
-                          ...frontDetails,
-                          ...backDetails,
-                          name: frontDetails.name !== "Not found" ? frontDetails.name : backDetails.name,
-                          idNumber: frontDetails.idNumber !== "Not found" ? frontDetails.idNumber : backDetails.idNumber,
-                          expiry: frontDetails.expiry !== "Not found" ? frontDetails.expiry : backDetails.expiry,
-                        };
+                        
+                        // Combine with the same improved logic as above
+                        const combined = {};
+                        const allKeys = [...new Set([...Object.keys(frontDetails), ...Object.keys(backDetails)])];
+                        
+                        allKeys.forEach(key => {
+                          const frontValue = frontDetails[key];
+                          const backValue = backDetails[key];
+                          
+                          if (frontValue && frontValue !== "Not found") {
+                            combined[key] = frontValue;
+                          } else if (backValue && backValue !== "Not found") {
+                            combined[key] = backValue;
+                          } else {
+                            combined[key] = frontValue || backValue || "Not found";
+                          }
+                        });
+                        
                         setCombinedIdDetails(combined);
                         console.log("Combined ID Details:", combined);
                       });
