@@ -8,7 +8,7 @@ export default function UserRegistrationForm() {
   const [cameraAvailable, setCameraAvailable] = useState(true);
   const [cameraStatus, setCameraStatus] = useState("idle");
   const [isFlipping, setIsFlipping] = useState(false);
-  const [facePresent, setFacePresent] = useState(false);
+  const [faceDetected, setFaceDetected] = useState(false);
   const [mockMode, setMockMode] = useState(false);
   const [idDetails, setIdDetails] = useState(null);
   const [isUploading, setIsUploading] = useState(false);
@@ -20,36 +20,6 @@ export default function UserRegistrationForm() {
   const [verificationAttempts, setVerificationAttempts] = useState(0);
   const [showRetryOptions, setShowRetryOptions] = useState(false);
   const [faceDetectionPaused, setFaceDetectionPaused] = useState(false);
-
-  const [livenessFeedback, setLivenessFeedback] = useState(null);
-
-  const [poseHoldTimer, setPoseHoldTimer] = useState(null);
-  const [poseStartTime, setPoseStartTime] = useState(null);
-  const POSE_HOLD_DURATION = 750; // ms to hold the pose
-  const POSE_STAGE_TIMEOUT = 30000; // ms before stage times out
-
-  // State for visual debugging on mobile
-  const [debugReadyState, setDebugReadyState] = useState(null);
-  const [debugStreamActive, setDebugStreamActive] = useState(null);
-  const [debugEffectStatus, setDebugEffectStatus] = useState("Effect Initial");
-  const [debugIntervalStatus, setDebugIntervalStatus] = useState("Interval Initial");
-  const [debugPollingStatus, setDebugPollingStatus] = useState("Polling Initial");
-  const [debugLastError, setDebugLastError] = useState(null);
-  const [showDebugInfo, setShowDebugInfo] = useState(false);
-
-  // Define confidence thresholds for smile/eyes open
-  const SMILE_CONFIDENCE_THRESHOLD = 75;
-  const EYES_OPEN_CONFIDENCE_THRESHOLD = 75;
-
-  const [livenessStage, setLivenessStage] = useState('idle');
-  const [livenessStageStartTime, setLivenessStageStartTime] = useState(null); // For stage timeout
-  const [livenessProgress, setLivenessProgress] = useState({
-    center: false,
-    blink: false,
-    smile: false,
-  });
-  const requiredMovements = ['center', 'blink', 'smile'];
-  const faceDetailsRef = useRef(null);
 
   const videoRef = useRef(null);
   const faceVideoRef = useRef(null);
@@ -63,6 +33,7 @@ export default function UserRegistrationForm() {
 
   const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
+  // Handle file upload without compression.
   const handleFileUpload = async (event) => {
     const file = event.target.files[0];
     if (!file) return;
@@ -100,6 +71,7 @@ export default function UserRegistrationForm() {
 
   const startCamera = (facing = "environment", targetRef = videoRef) => {
     setCameraStatus("pending");
+    // Request a higher resolution stream for a clear, crisp feed.
     navigator.mediaDevices
       .getUserMedia({
         video: {
@@ -125,21 +97,11 @@ export default function UserRegistrationForm() {
   };
 
   const stopCamera = () => {
-    console.log("Attempting to stop camera. Current stream:", streamRef.current);
     const stream = streamRef.current;
     if (stream) {
-      stream.getTracks().forEach((track) => {
-        console.log(`Stopping track: ${track.kind}, label: ${track.label}, state: ${track.readyState}`);
-        track.stop();
-      });
+      stream.getTracks().forEach((track) => track.stop());
       streamRef.current = null;
-      console.log("Camera stream stopped and ref cleared.");
-    } else {
-      console.log("stopCamera called but no active stream found.");
     }
-    // Also clear video element source to be safe
-    if (videoRef.current) videoRef.current.srcObject = null;
-    if (faceVideoRef.current) faceVideoRef.current.srcObject = null;
   };
 
   const handleFormSubmit = () => {
@@ -151,6 +113,7 @@ export default function UserRegistrationForm() {
     if (videoRef.current && canvasRef.current) {
       const video = videoRef.current;
       const canvas = canvasRef.current;
+      // Set canvas dimensions to match the video feed for a clear capture.
       canvas.width = video.videoWidth || 320;
       canvas.height = video.videoHeight || 240;
       const context = canvas.getContext("2d");
@@ -170,163 +133,30 @@ export default function UserRegistrationForm() {
 
   const handleSubmit = async () => {
     stopCamera();
-    await delay(300);
+    await delay(300); // wait for camera to stop cleanly
     await handleFlip("verification", "right");
-    await delay(200);
-
+    await delay(200); // wait for DOM to update
     setFaceVerified(null);
     setVerificationAttempts(0);
     setShowRetryOptions(false);
     setFaceDetectionPaused(false);
-    setFacePresent(false);
+    setFaceDetected(false);
     lastDetectionTime.current = 0;
-    setLivenessStage('idle');
-    setLivenessProgress({ center: false, blink: false, smile: false });
-    faceDetailsRef.current = null;
-    setFaceError(null);
-    setVerifying(false);
-    setDetecting(false);
-    // Reset debug states on submit
-    setDebugEffectStatus("Reset on Submit");
-    setDebugIntervalStatus("Reset on Submit");
-    setDebugPollingStatus("Reset on Submit");
-    setDebugLastError(null);
-
     startCamera("user", faceVideoRef);
   };
 
-  const checkLivenessChallenge = (details) => {
-    // Check if conditions are met to process the challenge
-    if (!details || !requiredMovements.includes(livenessStage) || faceDetectionPaused || verifying) {
-        return;
-    }
-
-    // Clear feedback/error at the start of each check cycle unless already failed
-    if(livenessStage !== 'failed') {
-        setLivenessFeedback(null);
-        setFaceError(null);
-    }
-
-    // --- Check for stage timeout ---
-    if (livenessStageStartTime && (Date.now() - livenessStageStartTime > POSE_STAGE_TIMEOUT)) {
-      console.warn(`Liveness: Timeout on stage: ${livenessStage}`);
-      setFaceError(`Timeout: Could not complete '${livenessStage}' action in time.`);
-      setLivenessStage('failed');
-      setFaceDetectionPaused(true); // Pause detection on timeout failure
-      setShowRetryOptions(true);
-      setLivenessStageStartTime(null); // Reset timer
-      return;
-    }
-    // --- End Timeout Check ---
-
-    const { Pose: pose, Smile: smile, EyesOpen: eyesOpen } = details;
-    const YAW_THRESHOLD = 15; // Relaxed threshold
-    const PITCH_THRESHOLD = 15; // Relaxed threshold
-
-    let isChallengeMet = false;
-    let feedbackMsg = null;
-
-    // Check pose first only for the 'center' stage
-    if (livenessStage === 'center') {
-        if (!pose || typeof pose.Yaw !== 'number' || typeof pose.Pitch !== 'number') {
-            console.warn("Invalid pose data received for center check:", pose);
-            setFaceError("Could not read head pose. Try adjusting lighting or position.");
-            // No timer to clear here
-            return;
-        }
-        const { Yaw: yaw, Pitch: pitch } = pose;
-        // Use relaxed thresholds
-        if (Math.abs(yaw) < YAW_THRESHOLD && Math.abs(pitch) < PITCH_THRESHOLD) {
-             isChallengeMet = true;
-             console.log(`Liveness: 'center' met (Yaw: ${yaw.toFixed(1)}, Pitch: ${pitch.toFixed(1)})`);
-        } else {
-            feedbackMsg = "Keep looking straight ahead.";
-            console.log(`Liveness: 'center' NOT met (Yaw: ${yaw.toFixed(1)}, Pitch: ${pitch.toFixed(1)})`);
-        }
-    } else if (livenessStage === 'blink') {
-        if (!eyesOpen || typeof eyesOpen.Value !== 'boolean' || typeof eyesOpen.Confidence !== 'number') {
-            console.warn("Invalid eyesOpen data received:", eyesOpen);
-            setFaceError("Could not detect eye status. Adjust lighting or position.");
-            // No timer to clear
-            return;
-        }
-        // We want to detect the closed state (Value: false) with sufficient confidence
-        if (eyesOpen.Value === false && eyesOpen.Confidence >= EYES_OPEN_CONFIDENCE_THRESHOLD) {
-            isChallengeMet = true;
-            console.log(`Liveness: 'blink' met (EyesClosed: ${!eyesOpen.Value}, Conf: ${eyesOpen.Confidence.toFixed(1)})`);
-        } else {
-             feedbackMsg = "Blink both eyes fully.";
-             console.log(`Liveness: 'blink' NOT met (EyesClosed: ${!eyesOpen.Value}, Conf: ${eyesOpen.Confidence.toFixed(1)})`);
-        }
-    } else if (livenessStage === 'smile') {
-        if (!smile || typeof smile.Value !== 'boolean' || typeof smile.Confidence !== 'number') {
-             console.warn("Invalid smile data received:", smile);
-            setFaceError("Could not detect smile status. Adjust lighting or position.");
-            // No timer to clear
-            return;
-        }
-        // We want to detect the smiling state (Value: true) with sufficient confidence
-        if (smile.Value === true && smile.Confidence >= SMILE_CONFIDENCE_THRESHOLD) {
-            isChallengeMet = true;
-             console.log(`Liveness: 'smile' met (Smiling: ${smile.Value}, Conf: ${smile.Confidence.toFixed(1)})`);
-        } else {
-             feedbackMsg = "Smile naturally.";
-             console.log(`Liveness: 'smile' NOT met (Smiling: ${smile.Value}, Conf: ${smile.Confidence.toFixed(1)})`);
-        }
-    }
-
-    if (isChallengeMet) {
-        console.log(`Liveness: Correct action detected for ${livenessStage}. Advancing.`);
-        setLivenessProgress(prev => ({ ...prev, [livenessStage]: true }));
-        setFaceError(null); // Clear any previous error on success
-        setLivenessFeedback(null); // Clear feedback on success
-        setLivenessStageStartTime(null); // Clear timer for the completed stage
-
-        const currentIndex = requiredMovements.indexOf(livenessStage);
-        const nextIndex = currentIndex + 1;
-
-        if (nextIndex < requiredMovements.length) {
-            const nextStage = requiredMovements[nextIndex];
-            setLivenessStage(nextStage);
-            setLivenessStageStartTime(Date.now()); // Start timer for the next stage
-            console.log(`Liveness: Moved to stage '${nextStage}'. Timer started.`);
-        } else {
-            console.log("Liveness: All movements detected. Pausing detection and starting verification.");
-            setFaceDetectionPaused(true); // Pause detection before verification
-            setLivenessStage('verifying');
-            captureAndVerify(); // Proceed to final capture and verification
-        }
-    } else {
-        // If the challenge wasn't met, provide feedback if available
-        if (feedbackMsg && !faceError) { // Only show feedback if no major error exists
-            setLivenessFeedback(feedbackMsg);
-        }
-    }
-  };
-
-  const detectFaceAndPoseOnServer = async (dataURL) => {
+  // Face detection with rate limiting
+  const detectFaceOnServer = async (dataURL) => {
+    // Check if throttling needed - only call API every 3 seconds
     const now = Date.now();
-    if (detecting || now - lastDetectionTime.current < 1000 || faceDetectionPaused || !requiredMovements.includes(livenessStage)) {
-       if (detecting) {
-            console.log("Detection already in progress. Skipping new request.");
-            setDebugPollingStatus("Polling: Skipped (Detection Active)");
-       } else if (now - lastDetectionTime.current < 1000) {
-           console.log("Detection throttled. Skipping new request.");
-           setDebugPollingStatus("Polling: Skipped (Throttled)");
-       } else if (faceDetectionPaused) {
-           console.log("Detection paused. Skipping new request.");
-           setDebugPollingStatus("Polling: Skipped (Paused)");
-       } else if (!requiredMovements.includes(livenessStage)) {
-            console.log(`Detection not needed for stage: ${livenessStage}. Skipping.`);
-            setDebugPollingStatus(`Polling: Skipped (Stage: ${livenessStage})`);
-       }
-      return;
+    if (now - lastDetectionTime.current < 3000 || faceDetectionPaused) {
+      return; // Skip this detection cycle
     }
-
+    
     setDetecting(true);
+    setFaceError(null);
     lastDetectionTime.current = now;
-    setDebugPollingStatus("Polling: Sending Request..."); // Indicate request is being sent
-
+    
     try {
       const res = await fetch('/api/detect-face', {
         method: 'POST',
@@ -334,297 +164,163 @@ export default function UserRegistrationForm() {
         body: JSON.stringify({ image: dataURL }),
       });
       const json = await res.json();
-
-      if (!res.ok || json.error) {
-        console.warn("Detection API error:", json.error || `HTTP ${res.status}`);
-        setFacePresent(false);
-        faceDetailsRef.current = null; // Clear details on API/server error
-        if (json.error && json.error !== faceError) setFaceError(json.error);
-        else if (!json.error && res.status !== 200) setFaceError(`Detection failed (Status: ${res.status})`);
-        setLivenessFeedback(null); // Clear feedback on error
-
-      } else { // res.ok is true
-        const currentFaceDetected = json.faceDetected;
-        setFacePresent(currentFaceDetected); // Update general presence state
-
-        if(currentFaceDetected && json.pose && json.smile && json.eyesOpen) {
-          // Face detected with all necessary details
-          faceDetailsRef.current = {
-             pose: json.pose,
-             smile: json.smile,
-             eyesOpen: json.eyesOpen,
-             confidence: json.confidence
-          };
-          // Clear transient errors/feedback if we now detect a face properly
-          if(faceError === "No face detected. Please position your face clearly in the frame." || faceError?.startsWith("Face details incomplete")) {
-              setFaceError(null);
-          }
-          if(livenessFeedback === "Face lost. Please reposition." || livenessFeedback === "Face details unclear. Ensure face is fully visible & centered.") {
-              setLivenessFeedback(null);
-          }
-          setDebugPollingStatus("Check Challenge (Details OK)");
-          checkLivenessChallenge(faceDetailsRef.current); // Check with fresh data
-
-        } else if (currentFaceDetected && (!json.pose || !json.smile || !json.eyesOpen)) {
-          // Face detected but key details are missing
-          console.warn(`Face detected (Conf: ${json.confidence?.toFixed(1)}%) but key details (pose/smile/eyes) are missing.`);
-          setDebugPollingStatus("Warn: Details Missing");
-          // Don't clear faceDetailsRef here - rely on previous good data if available
-          if (requiredMovements.includes(livenessStage) && !faceError) { // Avoid overwriting other errors
-             setLivenessFeedback("Face details unclear. Ensure face is fully visible & centered.");
-          }
-           // Still call checkLivenessChallenge, using existing details if available
-           if(faceDetailsRef.current) {
-                console.log("Calling checkLivenessChallenge with previous details due to missing current details.");
-                checkLivenessChallenge(faceDetailsRef.current);
-           } else {
-               console.log("Cannot call checkLivenessChallenge - missing details and no previous details available.");
-                if (requiredMovements.includes(livenessStage) && !faceError) {
-                    setFaceError("Face details incomplete. Adjust lighting or position.");
-                }
-           }
-
-        } else { // Face NOT detected by API (currentFaceDetected is false)
-          setDebugPollingStatus("No Face Detected by API");
-          // *** CHANGE HERE: Don't clear faceDetailsRef during active stages ***
-          if (requiredMovements.includes(livenessStage)) {
-             // *** CHANGE HERE: Don't set blocking error, set feedback instead ***
-             // setFaceError("No face detected. Please position your face clearly in the frame."); // REMOVED
-            if (!faceError) { // Avoid overwriting other errors
-                 setLivenessFeedback("Face lost. Please reposition.");
-            }
-            console.log("Face not detected during active liveness stage, relying on previous details if available.");
-            // Still call checkLivenessChallenge - it will use the existing faceDetailsRef.current (if any)
-            // The timeout mechanism will eventually trigger if the face remains undetected.
-            if(faceDetailsRef.current) {
-                checkLivenessChallenge(faceDetailsRef.current);
-            } else {
-                // If there are no previous details either, then we truly can't proceed
-                console.log("Cannot call checkLivenessChallenge - face not detected and no previous details.");
-                 if (!faceError) {
-                     setFaceError("No face detected. Please position your face clearly in the frame.");
-                 }
-            }
-          } else {
-            // If not in an active challenge stage (e.g., 'idle', 'verifying'), it's okay to clear details if no face is detected
-             faceDetailsRef.current = null;
-             console.log("Face not detected and not in active challenge stage. Clearing details.");
-          }
-        }
+      if (!res.ok) {
+        setFaceDetected(false);
+        setFaceError(json.error || 'Detection error');
+      } else {
+        setFaceDetected(json.faceDetected);
       }
     } catch (e) {
-      console.error("Network error during detection:", e);
-      setDebugPollingStatus(`Network Error: ${e.message}`);
-      setDebugLastError(`Network Error: ${e.message}`);
-      setFacePresent(false);
-      faceDetailsRef.current = null; // Clear on network/fetch errors
-      setFaceError('Network error connecting to detection service.');
-      setLivenessFeedback(null); // Clear feedback on error
+      setFaceDetected(false);
+      setFaceError('Network error');
     } finally {
       setDetecting(false);
     }
   };
 
+  // On verification step, poll for face detection with rate limiting
   useEffect(() => {
     let interval;
-    const isActiveLiveness = requiredMovements.includes(livenessStage);
-
-    if (step === 'verification' && isActiveLiveness && !faceDetectionPaused) {
-      console.log(`Liveness EFFECT: Setting up polling interval. Step: ${step}, Stage: ${livenessStage}, Paused: ${faceDetectionPaused}`);
-      setDebugEffectStatus(`Effect: Setting Interval (Stage: ${livenessStage})`);
-      setFaceError(null);
+    if (step === 'verification' && !faceDetectionPaused) {
       interval = setInterval(() => {
-        console.log(`Liveness INTERVAL: Fired. Stage: ${livenessStage}`);
-        setDebugIntervalStatus(`Interval: Fired (Stage: ${livenessStage})`);
-        if (faceVideoRef.current && faceCanvasRef.current) {
-          const video = faceVideoRef.current;
-          const currentReadyState = video.readyState;
-          const currentStreamActive = !!(video.srcObject?.active);
-
-          // Update debug states if they changed
-          setDebugReadyState(currentReadyState);
-          setDebugStreamActive(currentStreamActive);
-
-          console.log(`Liveness Polling (${livenessStage}): Video exists, readyState=${currentReadyState}, srcObject active=${currentStreamActive}`);
-
-          // Only proceed with drawing/detection if video is ready (readyState >= 2 means HAVE_CURRENT_DATA)
-          if (currentReadyState >= 2) {
-            console.log(`Liveness Polling (${livenessStage}): Video ready, attempting canvas draw...`);
-            setDebugPollingStatus(`Polling: Video Ready (RS=${currentReadyState}), Drawing...`);
-            try {
-                const canvas = faceCanvasRef.current;
-                const context = canvas.getContext("2d");
-                const videoWidth = video.videoWidth;
-                const videoHeight = video.videoHeight;
-                if (canvas.width !== videoWidth || canvas.height !== videoHeight) {
-                  canvas.width = videoWidth || 320;
-                  canvas.height = videoHeight || 240;
-                }
-                context.drawImage(video, 0, 0, canvas.width, canvas.height);
-                const dataURL = canvas.toDataURL('image/jpeg', 0.8);
-                console.log(`Liveness Polling (${livenessStage}): Canvas draw successful, initiating detection request.`);
-                setDebugPollingStatus(`Polling: Draw OK, Sending Request...`);
-                detectFaceAndPoseOnServer(dataURL);
-            } catch (canvasError) {
-                 console.error(`Liveness Polling (${livenessStage}): Error during canvas draw/capture:`, canvasError);
-                 setDebugPollingStatus(`Polling: Canvas Error! ${canvasError.message}`);
-                 setDebugLastError(`Canvas Error: ${canvasError.message}`);
-            }
-          } else {
-            console.log(`Liveness Polling (${livenessStage}): Video not ready (readyState: ${currentReadyState}). Skipping frame.`);
-            setDebugPollingStatus(`Polling: Video Not Ready (RS=${currentReadyState})`);
+        if (faceCanvasRef.current) {
+          const canvas = faceCanvasRef.current;
+          const context = canvas.getContext("2d");
+          // Make sure video is ready
+          if (faceVideoRef.current && faceVideoRef.current.readyState >= 2) {
+            context.drawImage(faceVideoRef.current, 0, 0, 320, 240);
+            const dataURL = canvas.toDataURL('image/png');
+            detectFaceOnServer(dataURL);
           }
-        } else {
-            console.log(`Liveness INTERVAL: faceVideoRef (${!!faceVideoRef.current}) or faceCanvasRef (${!!faceCanvasRef.current}) not available.`);
-            setDebugIntervalStatus(`Interval: Refs Not Ready (Vid: ${!!faceVideoRef.current}, Can: ${!!faceCanvasRef.current})`);
-            setDebugPollingStatus("Polling: Refs Not Ready");
         }
-      }, 1000); // Adjusted interval to 1000ms to match debounce logic
-    } else {
-      console.log(`Liveness EFFECT: Conditions NOT met or polling stopped. Step: ${step}, Stage: ${livenessStage}, Paused: ${faceDetectionPaused}, IsActiveLiveness: ${isActiveLiveness}`);
-      setDebugEffectStatus(`Effect: Conditions NOT Met (Step: ${step}, Stage: ${livenessStage}, Paused: ${faceDetectionPaused}, Active: ${isActiveLiveness})`);
+      }, 1000); // Check every second, but API calls are throttled internally
     }
+    return () => clearInterval(interval);
+  }, [step, faceDetectionPaused]);
 
-    return () => {
-      if(interval) {
-        console.log("Liveness: Clearing polling interval.");
-        clearInterval(interval);
-      }
-    };
-  }, [step, livenessStage, faceDetectionPaused]);
-
-  const captureAndVerify = async () => {
-    console.log("Liveness: Capturing final image for verification.");
-    setFaceError(null);
-
-    if (faceCanvasRef.current && faceVideoRef.current && faceVideoRef.current.readyState >= 2) {
-      const canvas = faceCanvasRef.current;
-      const context = canvas.getContext("2d");
-      const videoWidth = faceVideoRef.current.videoWidth;
-      const videoHeight = faceVideoRef.current.videoHeight;
-      canvas.width = videoWidth || 320;
-      canvas.height = videoHeight || 240;
-      context.drawImage(faceVideoRef.current, 0, 0, canvas.width, canvas.height);
-      const finalSelfieDataUrl = canvas.toDataURL('image/png');
-
-      setVerifying(true);
-      setShowRetryOptions(false);
-
-      try {
-        const resp = await fetch('/api/verify-face', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ idImage: photoFront, selfie: finalSelfieDataUrl }),
-        });
-
-        let errorMessage = 'Verification failed. Please try again.';
-        let responseData = null;
-
-        try {
-          responseData = await resp.json();
-        } catch (jsonError) {
-          console.error("Failed to parse verification response:", jsonError);
-        }
-
-        if (!resp.ok) {
-          console.error("Face verification API error:", resp.status, responseData);
-          errorMessage = responseData?.error || `Verification failed (Status: ${resp.status})`;
-          setFaceVerified(false);
-          setVerificationAttempts(prev => prev + 1);
-          setShowRetryOptions(true);
-          setLivenessStage('failed');
-          setFaceError(errorMessage);
-          setLivenessFeedback(null);
-          return;
-        }
-
-        setFaceVerified(responseData.match);
-        console.log("Verification result:", responseData.match);
-
-        if (!responseData.match) {
-          errorMessage = "Face could not be matched to the ID. Please ensure you are the person in the ID.";
-          setVerificationAttempts(prev => prev + 1);
-          setShowRetryOptions(true);
-          setLivenessStage('failed');
-          setFaceError(errorMessage);
-          setLivenessFeedback(null);
-        } else {
-          setLivenessStage('complete');
-          setFaceError(null);
-          setLivenessFeedback(null);
-        }
-      } catch (err) {
-        console.error("Face verification fetch error:", err);
+  // AWS Rekognition call
+  const verifyFace = async () => {
+    setVerifying(true);
+    setShowRetryOptions(false);
+    setFaceDetectionPaused(true); // Pause detection during verification
+    
+    try {
+      const resp = await fetch('/api/verify-face', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ idImage: photoFront, selfie: faceCanvasRef.current.toDataURL('image/png') }),
+      });
+      
+      if (!resp.ok) {
+        // Handle HTTP error responses (e.g., 400 Bad Request)
+        const errorData = await resp.json().catch(() => ({ error: 'Unknown error' }));
+        console.error("Face verification failed:", resp.status, errorData);
         setFaceVerified(false);
         setVerificationAttempts(prev => prev + 1);
         setShowRetryOptions(true);
-        setLivenessStage('failed');
-        setFaceError('Network error during face verification.');
-        setLivenessFeedback(null);
-      } finally {
-        setVerifying(false);
+        return;
       }
-    } else {
-      console.error("Liveness: Failed to capture final image - video or canvas not ready.");
-      setFaceError("Could not capture image for verification. Please ensure camera access.");
-      setLivenessStage('failed');
+      
+      const data = await resp.json();
+      setFaceVerified(data.match);
+      
+      if (!data.match) {
+        setVerificationAttempts(prev => prev + 1);
+        setShowRetryOptions(true);
+      }
+    } catch (err) {
+      console.error("Face verification error:", err);
+      setFaceVerified(false);
+      setVerificationAttempts(prev => prev + 1);
       setShowRetryOptions(true);
+    } finally {
       setVerifying(false);
-      setFaceDetectionPaused(true);
-      setLivenessFeedback(null);
     }
   };
 
+  // Reset verification state for retry
   const handleRetryVerification = () => {
-    console.log("Attempting Liveness Retry...");
-    stopCamera();
-
     setFaceVerified(null);
     setShowRetryOptions(false);
     setFaceDetectionPaused(false);
-    lastDetectionTime.current = 0;
-    setLivenessProgress({ center: false, blink: false, smile: false });
-    setLivenessStage('center');
-    setLivenessStageStartTime(Date.now()); // Start the timer for the first stage
-    setFaceError(null);
-    faceDetailsRef.current = null;
-    setLivenessFeedback(null);
-    setVerifying(false);
-    setDetecting(false);
-    // Reset debug states on retry
-    setDebugEffectStatus("Reset on Retry");
-    setDebugIntervalStatus("Reset on Retry");
-    setDebugPollingStatus("Reset on Retry");
-    setDebugLastError(null);
-    // Clear and reset timers - Only stage timer now
-    setLivenessStageStartTime(Date.now());
-
-    // Explicitly restart the camera for the retry
-    console.log("Restarting camera for retry...");
-    startCamera("user", faceVideoRef);
+    lastDetectionTime.current = 0; // Reset timer to allow immediate detection
   };
 
+  // --- Verify via upload ---
+  const handleSelfieUpload = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    setVerifying(true);
+    setShowRetryOptions(false);
+    setFaceDetectionPaused(true); // Pause detection during verification
+    
+    const reader = new FileReader();
+    reader.onload = async (ev) => {
+      const dataURL = ev.target.result;
+      try {
+        const res = await fetch("/api/verify-face", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ idImage: photoFront, selfie: dataURL }),
+        });
+        
+        if (!res.ok) {
+          // Handle HTTP error responses
+          const errorData = await res.json().catch(() => ({ error: 'Unknown error' }));
+          console.error("Face verification failed:", res.status, errorData);
+          setFaceVerified(false);
+          setVerificationAttempts(prev => prev + 1);
+          setShowRetryOptions(true);
+          return;
+        }
+        
+        const data = await res.json();
+        setFaceVerified(data.match);
+        
+        if (!data.match) {
+          setVerificationAttempts(prev => prev + 1);
+          setShowRetryOptions(true);
+        }
+      } catch (err) {
+        console.error("Face verification error:", err);
+        setFaceVerified(false);
+        setVerificationAttempts(prev => prev + 1);
+        setShowRetryOptions(true);
+      } finally {
+        setVerifying(false);
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
+  // Return to completed step or go to success if verification is successful
   const handleVerificationComplete = () => {
     if (faceVerified) {
       handleFlip("success", "right");
     } else {
+      // This shouldn't typically happen as the button is only shown in success case
       handleFlip("completed", "left");
     }
   }
 
+  // This helper function compresses the image dataURL for OCR.
   function compressImageForOCR(dataURL, quality = 0.9) {
     return new Promise((resolve) => {
       const img = new Image();
       img.src = dataURL;
       img.onload = () => {
         const canvas = document.createElement('canvas');
+        // Optionally, you can also reduce dimensions here if needed.
         canvas.width = img.width;
         canvas.height = img.height;
         const ctx = canvas.getContext('2d');
         ctx.drawImage(img, 0, 0);
+        // Convert image to JPEG with the specified quality.
         const compressedDataURL = canvas.toDataURL('image/jpeg', quality);
+        // Estimate file size in KB (base64 encoding approximates to 3/4 the length in bytes)
         const fileSizeKb = Math.round((compressedDataURL.length * (3 / 4)) / 1024);
         if (fileSizeKb > 1024 && quality > 0.1) {
+          // Reduce quality further if file size is still too high.
           compressImageForOCR(dataURL, quality - 0.1).then(resolve);
         } else {
           resolve(compressedDataURL);
@@ -637,6 +333,7 @@ export default function UserRegistrationForm() {
     try {
       setIsExtracting(true);
 
+      // Estimate file size and compress if necessary.
       const fileSizeKb = Math.round((imageData.length * (3 / 4)) / 1024);
       let processedImage = imageData;
       if (fileSizeKb > 1024) {
@@ -668,6 +365,7 @@ export default function UserRegistrationForm() {
     }
   }
 
+  // Trigger OCR extraction when registration is completed.
   useEffect(() => {
     if (step === "completed" && photoFront && !idDetails && !isExtracting) {
       extractIdDetails(photoFront).then((details) => {
@@ -704,177 +402,95 @@ export default function UserRegistrationForm() {
     };
   }, [isFlipping]);
 
+  // Clean up when component unmounts
   useEffect(() => {
     return () => {
       stopCamera();
     };
   }, []);
 
-  useEffect(() => {
-    // --- Component Cleanup Effect ---
-    return () => {
-      stopCamera(); // Ensure camera stops on unmount
-      // No poseHoldTimer to clear now
-      // The polling interval is cleared by its own effect's cleanup
-      console.log("Component Unmounting: Camera stopped.");
-    };
-  }, []); // Removed poseHoldTimer dependency
-
   const renderVerificationStepContent = () => {
-    const getLivenessInstruction = () => {
-      switch (livenessStage) {
-        case 'idle': return 'Get ready for the liveness check.';
-        case 'center': return 'Look straight ahead at the camera.';
-        case 'blink': return 'Blink both eyes now.';
-        case 'smile': return 'Smile naturally now.';
-        case 'verifying': return 'Verifying your identity... Please hold still.';
-        case 'complete': return faceVerified ? 'Identity Verified!' : 'Liveness check complete. Verification pending...';
-        case 'failed': return 'Liveness check failed.';
-        default: return 'Position your face in the frame.';
-      }
-    };
-
-    const renderProgressIndicators = () => {
-      return (
-        <div className="flex justify-center space-x-2 my-3">
-          {requiredMovements.map((move) => (
-            <div key={move} className="flex flex-col items-center">
-              <span
-                className={`inline-block w-5 h-5 rounded-full border-2 ${
-                  livenessProgress[move]
-                    ? 'bg-green-500 border-green-600'
-                    : 'bg-gray-200 border-gray-400'
-                } transition-colors duration-300`}
-              ></span>
-              <span className="text-xs mt-1 capitalize text-gray-600">{move}</span>
-            </div>
-          ))}
-        </div>
-      );
-    };
-
     return (
       <div className="text-center space-y-4">
         <h2 className="text-xl font-semibold">
-           Identity Verification
+          Face Verification
         </h2>
-         <p className="text-sm text-gray-600 -mt-2">Liveness Check Required</p>
 
-        <div className="mx-auto w-80 h-60 relative overflow-hidden rounded-lg border-2 border-gray-300 shadow-inner bg-gray-100">
-          {(livenessStage !== 'verifying' && livenessStage !== 'complete' && livenessStage !== 'failed') && faceVerified === null && (
-             <div className="absolute inset-0 z-10 pointer-events-none flex items-center justify-center">
-                <div className="w-[180px] h-[220px] border-4 border-dashed border-yellow-400 rounded-[50%] opacity-75 shadow-md"></div>
-             </div>
-          )}
-          <video ref={faceVideoRef} autoPlay muted playsInline className="w-full h-full object-cover transform scale-x-[-1]" />
-          <canvas ref={faceCanvasRef} className="absolute top-0 left-0 opacity-0 pointer-events-none" width="320" height="240"/>
-        </div>
-
-        {/* --- Visual Debug Info --- */}
-        <div className="text-xs text-gray-500 text-center mt-1">
-            <button onClick={() => setShowDebugInfo(!showDebugInfo)} className="text-blue-600 underline text-xs">{showDebugInfo ? "Hide" : "Show"} Debug</button>
-            {showDebugInfo && (
-                 <div className="mt-1 p-2 border border-dashed border-gray-400 bg-gray-50 text-left space-y-0.5 overflow-x-auto">
-                    <p><strong>Effect:</strong> {debugEffectStatus}</p>
-                    <p><strong>Interval:</strong> {debugIntervalStatus}</p>
-                    <p><strong>Polling:</strong> {debugPollingStatus}</p>
-                    <p><strong>Video RS:</strong> {debugReadyState ?? 'N/A'}</p>
-                    <p><strong>Stream Active:</strong> {debugStreamActive === null ? 'N/A' : String(debugStreamActive)}</p>
-                    <p><strong>Face Present:</strong> {facePresent ? 'Yes' : 'No'}</p>
-                    <p><strong>Detecting:</strong> {detecting ? 'Yes' : 'No'}</p>
-                    <p><strong>Verifying:</strong> {verifying ? 'Yes' : 'No'}</p>
-                    <p><strong>Paused:</strong> {faceDetectionPaused ? 'Yes' : 'No'}</p>
-                    <p><strong>Stage:</strong> {livenessStage}</p>
-                    {debugLastError && <p className="text-red-600"><strong>LAST ERROR:</strong> {debugLastError}</p>}
-                 </div>
-            )}
-        </div>
-        {/* --- End Debug Info --- */}
-
-        {faceVerified !== true && (
-           <div className="text-sm min-h-[100px] flex flex-col justify-center items-center bg-gray-50 p-3 rounded-lg border border-gray-200">
-              <p className={`text-base font-medium mb-1 ${livenessStage === 'failed' || faceError ? 'text-red-600' : 'text-gray-800'}`}>
-                 {getLivenessInstruction()}
-              </p>
-
-              {livenessFeedback && !faceError && (
-                  <p className="text-blue-600 text-sm font-normal mt-0 mb-2 px-2">{livenessFeedback}</p>
-              )}
-
-              {faceError && <p className="text-red-600 text-sm font-semibold mt-1 mb-2 px-2">{faceError}</p>}
-
-              {requiredMovements.includes(livenessStage) && !faceError && renderProgressIndicators()}
-
-               {(detecting || verifying) && livenessStage !== 'failed' && !faceError && (
-                   <div className="mt-2 w-5 h-5 border-2 border-blue-200 border-t-blue-500 rounded-full animate-spin"></div>
-               )}
-
-               {!facePresent && requiredMovements.includes(livenessStage) && !detecting && !faceError && !livenessFeedback && (
-                   <p className="text-amber-600 text-xs mt-1">Cannot detect face. Adjust position/lighting.</p>
-               )}
-           </div>
-        )}
-
-        {faceVerified === true && (
-            <div className="bg-green-100 p-4 rounded-lg border border-green-300 shadow">
-              <div className="flex items-center justify-center mb-2">
-                 <svg className="w-8 h-8 text-green-600 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
-                 <p className="text-green-700 font-medium text-lg">Identity Verified Successfully!</p>
-              </div>
-              <p className="text-green-600 text-sm mb-3">Your face matched the provided ID document.</p>
-              <button
-                onClick={handleVerificationComplete}
-                className="mt-1 px-6 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg shadow transition-colors"
-              >
-                Continue to Dashboard
-              </button>
+        <div className="mx-auto w-80 h-60 relative overflow-hidden rounded-lg border">
+          {/* Display guide overlay if verification is active */}
+          {faceVerified === null && (
+            <div className="absolute inset-0 pointer-events-none">
+              <div className="w-48 h-48 border-2 border-dashed border-yellow-400 rounded-full mx-auto mt-4 opacity-60"></div>
+              <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-32 h-32 border-2 border-yellow-400 rounded-full opacity-60"></div>
             </div>
+          )}
+          <video ref={faceVideoRef} autoPlay muted playsInline className="w-full h-full object-cover" />
+          <canvas ref={faceCanvasRef} width={320} height={240} className="absolute top-0 left-0 opacity-0" />
+        </div>
+
+        {/* Status indicators */}
+        {faceVerified === null && (
+          <div className="text-sm">
+            {detecting && <p className="text-blue-600">Detecting face...</p>}
+            {!detecting && faceDetected && <p className="text-green-600">Face detected - Please look directly at camera</p>}
+            {!detecting && !faceDetected && <p className="text-amber-600">No face detected, please align your face within the frame</p>}
+            {faceError && <p className="text-red-600 text-xs">{faceError}</p>}
+          </div>
         )}
 
-        {(faceVerified === false || (livenessStage === 'failed' && faceVerified === null)) && (
-           <div className="bg-red-50 p-4 rounded-lg border border-red-200 shadow">
-              <div className="flex items-center justify-center mb-2">
-                 <svg className="w-7 h-7 text-red-600 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
-                <p className="text-red-700 font-medium text-lg">
-                   {faceVerified === false ? 'Verification Failed' : 'Liveness Check Failed'}
-                </p>
-              </div>
-             <p className="text-red-600 text-sm mb-3 px-2">
-                {faceError || (faceVerified === false ? "We couldn't match your face with the ID provided." : "Could not complete the liveness check.")}
-             </p>
+        {/* Verification success message */}
+        {faceVerified === true && (
+          <div className="bg-green-100 p-4 rounded-lg border border-green-300">
+            <p className="text-green-700 font-medium text-lg">Identity Verified</p>
+            <p className="text-green-600 text-sm">Your face has been successfully matched with your ID.</p>
+            <button 
+              onClick={handleVerificationComplete}
+              className="mt-3 px-5 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg shadow transition-colors"
+            >
+              Continue
+            </button>
+          </div>
+        )}
 
-            {(showRetryOptions || livenessStage === 'failed') && (
-              <div className="space-y-3 mt-3 border-t border-red-100 pt-3">
-                <p className="text-gray-700 text-sm font-medium">Troubleshooting Tips:</p>
-                 <ul className="text-xs text-left list-disc pl-6 text-gray-600 space-y-1">
-                  <li>Ensure your face is well-lit from the front. Avoid backlighting or strong shadows.</li>
-                   <li>Remove hats, sunglasses, or face coverings. Regular glasses are usually okay if worn in ID.</li>
-                  <li>Hold your phone still at eye level.</li>
-                  <li>Follow the head movement prompts slowly and clearly.</li>
-                   <li>Ensure you are the same person shown on the ID document.</li>
+        {/* Verification failure message with guidance */}
+        {faceVerified === false && (
+          <div className="bg-red-50 p-4 rounded-lg border border-red-200">
+            <p className="text-red-700 font-medium text-lg">Verification Failed</p>
+            <p className="text-red-600 text-sm mb-2">
+              We couldn't match your face with the ID provided.
+            </p>
+            
+            {showRetryOptions && (
+              <div className="space-y-3 mt-2">
+                <p className="text-gray-700 text-sm">Please try again with these tips:</p>
+                <ul className="text-xs text-left list-disc pl-5 text-gray-600">
+                  <li>Ensure good lighting on your face</li>
+                  <li>Remove glasses or face coverings</li>
+                  <li>Look directly at the camera</li>
+                  <li>Avoid shadows on your face</li>
                 </ul>
-
-                <div className="flex flex-col items-center space-y-2 pt-2">
-                   <button
-                     onClick={handleRetryVerification}
-                    className="w-full max-w-xs px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg shadow transition-colors"
+                
+                <div className="flex flex-col space-y-2 mt-3">
+                  <button
+                    onClick={handleRetryVerification}
+                    className="w-full px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg shadow"
                   >
-                     Try Liveness Check Again
+                    Try Again
                   </button>
-
-                  {verificationAttempts >= 1 && (
-                    <button
-                      onClick={() => handleFlip("completed", "left")}
-                      className="w-full max-w-xs px-4 py-2 bg-gray-500 hover:bg-gray-600 text-white rounded-lg shadow text-sm"
-                    >
-                       Check/Retake ID Photo
-                    </button>
-                  )}
-
+                  
                   {verificationAttempts >= 2 && (
                     <button
-                       onClick={() => window.location.href = "/contact-support"}
-                      className="w-full max-w-xs px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg shadow text-sm"
+                      onClick={() => handleFlip("completed", "left")}
+                      className="w-full px-4 py-2 bg-gray-500 hover:bg-gray-600 text-white rounded-lg shadow"
+                    >
+                      Back to ID Verification
+                    </button>
+                  )}
+                  
+                  {verificationAttempts >= 3 && (
+                    <button
+                      onClick={() => window.location.href = "/contact-support"}
+                      className="w-full px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg shadow"
                     >
                       Contact Support
                     </button>
@@ -885,26 +501,37 @@ export default function UserRegistrationForm() {
           </div>
         )}
 
-        {faceVerified === null && livenessStage === 'idle' && !verifying && (
-          <div className="flex justify-center mt-4">
+        {/* Action buttons - only show when not displaying result or retry options */}
+        {faceVerified === null && (
+          <div className="flex justify-center space-x-4">
             <button
-              onClick={() => {
-                 setLivenessStage('center');
-                 setFaceDetectionPaused(false);
-                 setLivenessStageStartTime(Date.now()); // Start timer for the 'center' stage
-                 setFaceError(null);
-                 setLivenessFeedback(null);
-                 // No poseHoldTimer to clear
-                 setShowRetryOptions(false); // Hide retry options when starting
-                 setLivenessProgress({ center: false, blink: false, smile: false }); // Reset progress indicators
-                 console.log("Liveness: Start button clicked. Moved to stage 'center'. Timer started.");
-              }}
-              className="px-6 py-3 bg-yellow-500 hover:bg-yellow-400 text-black rounded-full shadow-md font-semibold text-lg transition-all duration-200 ease-in-out transform hover:scale-105"
+              onClick={verifyFace}
+              disabled={!faceDetected || verifying}
+              className={`px-4 py-2 rounded-full transition-colors ${
+                faceDetected && !verifying
+                  ? "bg-yellow-400 hover:bg-yellow-300 text-black"
+                  : "bg-gray-300 text-gray-500 cursor-not-allowed"
+              }`}
             >
-              Start Liveness Check
+              {verifying ? 'Verifying...' : 'Verify Face'}
+            </button>
+            <button
+              onClick={() => selfieInputRef.current.click()}
+              disabled={verifying}
+              className="px-4 py-2 bg-blue-500 hover:bg-blue-400 text-white rounded-full"
+            >
+              {verifying ? 'Uploading...' : 'Upload Selfie'}
             </button>
           </div>
         )}
+
+        <input
+          type="file"
+          accept="image/*"
+          ref={selfieInputRef}
+          onChange={handleSelfieUpload}
+          className="hidden"
+        />
       </div>
     );
   };
