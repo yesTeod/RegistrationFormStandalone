@@ -55,9 +55,18 @@ export default async function handler(req, res) {
 
     if (match) {
       console.log(`Login successful for: ${email}`);
-      // Login successful
-      // Return minimal success, maybe the user's current status
-      return res.status(200).json({ success: true, email: user.email, status: user.status });
+      // Return user details along with success
+      return res.status(200).json({ 
+        success: true, 
+        email: user.email, 
+        status: user.status,
+        // Include additional user data if available
+        name: user.name || null,
+        dateOfBirth: user.dateOfBirth || null,
+        address: user.address || null,
+        // Include any other ID details if stored
+        idDetails: user.idDetails || null
+      });
     } else {
       console.log(`Login failed: Incorrect password for ${email}`);
       // Incorrect password
