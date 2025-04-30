@@ -16,8 +16,7 @@
     "serverless-http": "^2.7.0",
     "@aws-sdk/client-rekognition": "^3.330.0",
     "mongodb": "^6.16.0",
-    "node-fetch": "^3.3.0",
-    "aws-sdk": "^2.1420.0"
+    "@aws-sdk/client-textract": "^3.528.0"
   },
   "devDependencies": {
     "@types/react": "19.0.0",
