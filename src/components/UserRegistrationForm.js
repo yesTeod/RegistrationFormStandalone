@@ -532,8 +532,7 @@ export default function UserRegistrationForm() {
         processedImage = await compressImageForOCR(imageData);
       }
 
-      // Try the advanced extraction endpoint first
-      const response = await fetch("/api/advanced-extract-id", {
+      const response = await fetch("/api/extract-id", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ 
@@ -541,55 +540,13 @@ export default function UserRegistrationForm() {
           englishOnly: englishOnly 
         }),
       });
-      
       if (!response.ok) {
         throw new Error("OCR request failed");
       }
-      
       const data = await response.json();
-      
       if (data.error) {
         console.warn("API returned an error:", data.error);
       }
-      
-      // If the advanced extraction fails or returns too many "Not found" values,
-      // fall back to the original extraction endpoint
-      const notFoundCount = Object.values(data).filter(val => val === "Not found").length;
-      const totalFields = Object.keys(data).length;
-      
-      // If more than 70% of fields are "Not found", try the original endpoint
-      if (notFoundCount > totalFields * 0.7) {
-        console.log("Too many fields not found, falling back to original extractor");
-        
-        const fallbackResponse = await fetch("/api/extract-id", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ 
-            image: processedImage,
-            englishOnly: englishOnly 
-          }),
-        });
-        
-        if (!fallbackResponse.ok) {
-          throw new Error("Fallback OCR request failed");
-        }
-        
-        const fallbackData = await fallbackResponse.json();
-        if (fallbackData.error) {
-          console.warn("Fallback API returned an error:", fallbackData.error);
-        }
-        
-        // Merge the results, preferring non-"Not found" values
-        Object.keys(fallbackData).forEach(key => {
-          if (data[key] === "Not found" && fallbackData[key] !== "Not found") {
-            data[key] = fallbackData[key];
-          }
-        });
-      }
-      
-      // Log the final result after potential fallback
-      console.log("Final extracted ID details:", data);
-      
       return data;
     } catch (error) {
       console.error("Error extracting ID details:", error);
