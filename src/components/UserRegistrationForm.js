@@ -532,17 +532,20 @@ export default function UserRegistrationForm() {
         processedImage = await compressImageForOCR(imageData);
       }
 
-      const response = await fetch("/api/extract-id", {
+      // Call our fallback endpoint which tries AWS Textract first, then falls back to OCR if needed
+      const response = await fetch("/api/extract-id-fallback", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ 
           image: processedImage,
-          englishOnly: englishOnly 
+          englishOnly: englishOnly
         }),
       });
+      
       if (!response.ok) {
-        throw new Error("OCR request failed");
+        throw new Error("ID extraction failed");
       }
+      
       const data = await response.json();
       if (data.error) {
         console.warn("API returned an error:", data.error);
