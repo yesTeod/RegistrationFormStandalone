@@ -21,7 +21,6 @@ export default function UserRegistrationForm() {
   const [showRetryOptions, setShowRetryOptions] = useState(false);
   const [faceDetectionPaused, setFaceDetectionPaused] = useState(false);
   const [blinked, setBlinked] = useState(false);
-  const [smiled, setSmiled] = useState(false);
   const [livenessVerified, setLivenessVerified] = useState(false);
   const [liveChallengeStep, setLiveChallengeStep] = useState(0);
   const [livenessCheckActive, setLivenessCheckActive] = useState(false);
@@ -152,7 +151,6 @@ export default function UserRegistrationForm() {
     setFaceDetectionPaused(false);
     setFaceDetected(false);
     setBlinked(false);
-    setSmiled(false);
     setLivenessVerified(false);
     setLiveChallengeStep(0);
     setLivenessCheckActive(false);
@@ -218,7 +216,7 @@ export default function UserRegistrationForm() {
       const json = await res.json();
       
       if (res.ok && json.faceDetected) {
-        // Store face bounding box for UI positioning
+        // Store face bounding box for UI positioning (we'll still store it even though we won't use it for positioning)
         if (json.boundingBox) {
           setFaceBoundingBox(json.boundingBox);
         }
@@ -227,27 +225,21 @@ export default function UserRegistrationForm() {
         if (liveChallengeStep === 1 && json.isBlinking) {
           // Detected blinking
           setBlinked(true);
-          // Move to smile challenge
+          // Skip smile challenge and move directly to turn left
           setLiveChallengeStep(2);
-          setChallengeText("Great! Now please smile");
-        } else if (liveChallengeStep === 2 && json.isSmiling) {
-          // Detected smiling
-          setSmiled(true);
-          // Move to turn left challenge
-          setLiveChallengeStep(3);
-          setChallengeText("Perfect! Now turn your head left");
-        } else if (liveChallengeStep === 3 && json.headPose && json.headPose.yaw < -15) {
+          setChallengeText("Great! Now turn your head left");
+        } else if (liveChallengeStep === 2 && json.headPose && json.headPose.yaw < -15) {
           // Detected head turn left (negative yaw value)
           setTurnedLeft(true);
           // Move to turn right challenge
-          setLiveChallengeStep(4);
+          setLiveChallengeStep(3);
           setChallengeText("Excellent! Now turn your head right");
-        } else if (liveChallengeStep === 4 && json.headPose && json.headPose.yaw > 15) {
+        } else if (liveChallengeStep === 3 && json.headPose && json.headPose.yaw > 15) {
           // Detected head turn right (positive yaw value)
           setTurnedRight(true);
           
           // If all challenges passed
-          if (blinked && smiled && turnedLeft) {
+          if (blinked && turnedLeft) {
             setLivenessVerified(true);
             setLivenessCheckActive(false);
             setChallengeText("Liveness verified! You can proceed.");
@@ -263,7 +255,6 @@ export default function UserRegistrationForm() {
   const startLivenessCheck = () => {
     // Reset liveness states
     setBlinked(false);
-    setSmiled(false);
     setTurnedLeft(false);
     setTurnedRight(false);
     setLivenessVerified(false);
@@ -276,11 +267,10 @@ export default function UserRegistrationForm() {
 
   // Calculate progress percentage based on completed challenges
   const calculateLivenessProgress = () => {
-    const totalSteps = 4; // Blink, smile, turn left, turn right
+    const totalSteps = 3; // Blink, turn left, turn right (removed smile)
     let completedSteps = 0;
     
     if (blinked) completedSteps++;
-    if (smiled) completedSteps++;
     if (turnedLeft) completedSteps++;
     if (turnedRight) completedSteps++;
     
@@ -290,9 +280,8 @@ export default function UserRegistrationForm() {
   // Get the appropriate oval guide color based on the current step
   const getGuideColor = () => {
     if (liveChallengeStep === 1) return "blue"; // Blink
-    if (liveChallengeStep === 2) return "yellow"; // Smile
-    if (liveChallengeStep === 3) return "green"; // Turn left
-    if (liveChallengeStep === 4) return "purple"; // Turn right
+    if (liveChallengeStep === 2) return "green"; // Turn left
+    if (liveChallengeStep === 3) return "purple"; // Turn right
     return "gray";
   };
 
@@ -303,7 +292,6 @@ export default function UserRegistrationForm() {
     setFaceDetectionPaused(false);
     // Reset liveness states
     setBlinked(false);
-    setSmiled(false);
     setTurnedLeft(false);
     setTurnedRight(false);
     setLivenessVerified(false);
@@ -415,7 +403,6 @@ export default function UserRegistrationForm() {
     
     // Skip liveness check for uploaded selfies - we're assuming the user is providing a legitimate selfie
     setBlinked(true);
-    setSmiled(true);
     setTurnedLeft(true);
     setTurnedRight(true);
     setLivenessVerified(true);
@@ -585,50 +572,40 @@ export default function UserRegistrationForm() {
         </h2>
 
         <div className="mx-auto w-80 h-60 relative overflow-hidden rounded-lg border">
-          {/* Dynamic oval guide overlay that snaps to face */}
+          {/* Fixed oval guide overlay centered in the camera view */}
           {faceVerified === null && (
             <div className="absolute inset-0 pointer-events-none">
-              {/* When face is detected, show a guide oval positioned over the face */}
-              {faceBoundingBox ? (
-                <div 
-                  className={`absolute border-2 border-dashed rounded-full transition-all duration-300`}
-                  style={{
-                    borderColor: livenessCheckActive ? getGuideColor() : "rgba(250, 204, 21, 0.6)",
-                    width: `${Math.max(faceBoundingBox.Width * 180, 120)}px`,
-                    height: `${Math.max(faceBoundingBox.Height * 240, 150)}px`,
-                    left: `${faceBoundingBox.Left * 320}px`,
-                    top: `${faceBoundingBox.Top * 240}px`,
-                    transform: 'translate(-50%, -50%) scale(1.2)',
-                    boxShadow: livenessCheckActive ? `0 0 10px ${getGuideColor()}` : 'none',
-                    opacity: 0.7
-                  }}
-                >
-                  {/* Challenge indicators */}
-                  {liveChallengeStep === 1 && (
-                    <div className="absolute inset-0 flex items-center justify-center">
-                      <div className="w-full h-1 bg-blue-400 animate-pulse"></div>
-                    </div>
-                  )}
-                  {liveChallengeStep === 2 && (
-                    <div className="absolute inset-0 flex items-center justify-center">
-                      <div className="w-8 h-8 rounded-full border-2 border-yellow-400 mx-auto mt-8"></div>
-                    </div>
-                  )}
-                  {liveChallengeStep === 3 && (
-                    <div className="absolute inset-0 flex items-center justify-center">
-                      <div className="text-2xl text-green-500 font-bold animate-pulse">←</div>
-                    </div>
-                  )}
-                  {liveChallengeStep === 4 && (
-                    <div className="absolute inset-0 flex items-center justify-center">
-                      <div className="text-2xl text-purple-500 font-bold animate-pulse">→</div>
-                    </div>
-                  )}
-                </div>
-              ) : (
-                // Default centered oval when no face is detected
-                <div className="w-48 h-48 border-2 border-dashed border-yellow-400 rounded-full mx-auto mt-4 opacity-60"></div>
-              )}
+              {/* Always centered oval, not trying to snap to face position */}
+              <div 
+                className="absolute border-2 border-dashed rounded-full transition-all duration-300"
+                style={{
+                  borderColor: livenessCheckActive ? getGuideColor() : "rgba(250, 204, 21, 0.6)",
+                  width: "140px",
+                  height: "180px",
+                  left: "50%",
+                  top: "50%",
+                  transform: 'translate(-50%, -50%)',
+                  boxShadow: livenessCheckActive ? `0 0 10px ${getGuideColor()}` : 'none',
+                  opacity: 0.7
+                }}
+              >
+                {/* Challenge indicators */}
+                {liveChallengeStep === 1 && (
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <div className="w-full h-1 bg-blue-400 animate-pulse"></div>
+                  </div>
+                )}
+                {liveChallengeStep === 2 && (
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <div className="text-2xl text-green-500 font-bold animate-pulse">←</div>
+                  </div>
+                )}
+                {liveChallengeStep === 3 && (
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <div className="text-2xl text-purple-500 font-bold animate-pulse">→</div>
+                  </div>
+                )}
+              </div>
             </div>
           )}
           <video ref={faceVideoRef} autoPlay muted playsInline className="w-full h-full object-cover" />
@@ -646,9 +623,6 @@ export default function UserRegistrationForm() {
               <div className="flex flex-wrap gap-2 justify-center mt-2">
                 <span className={`text-xs px-2 py-1 rounded-full ${blinked ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-500'}`}>
                   {blinked ? '✓ Blink' : '◯ Blink'}
-                </span>
-                <span className={`text-xs px-2 py-1 rounded-full ${smiled ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-500'}`}>
-                  {smiled ? '✓ Smile' : '◯ Smile'}
                 </span>
                 <span className={`text-xs px-2 py-1 rounded-full ${turnedLeft ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-500'}`}>
                   {turnedLeft ? '✓ Turn Left' : '◯ Turn Left'}
