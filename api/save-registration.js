@@ -18,11 +18,21 @@ export default async function handler(req, res) {
     const collection = db.collection("user_verifications");
 
     console.log("Saving user data:", JSON.stringify(req.body));
-    const { email, password } = req.body; // Destructure email and password
+    const { email, password, idDetails } = req.body; // Get email, password and ID details
 
     if (!email || !password) {
       console.error("Email or password missing in request body");
       return res.status(400).json({ success: false, error: "Email and password are required" });
+    }
+
+    // Check if user already exists
+    const existingUser = await collection.findOne({ email: email });
+    if (existingUser) {
+      return res.status(400).json({ 
+        success: false, 
+        error: "User already exists", 
+        code: "USER_EXISTS" 
+      });
     }
 
     // Hash the password
@@ -35,6 +45,25 @@ export default async function handler(req, res) {
       status: 'pending', // Initial status before verification
       createdAt: new Date(),
     };
+
+    // Add ID details if provided
+    if (idDetails) {
+      userData.idDetails = idDetails;
+      
+      // Explicitly add address as a top-level field for easier access
+      if (idDetails.address && idDetails.address !== "Not found") {
+        userData.address = idDetails.address;
+      }
+      
+      // Add any other important ID details as top-level fields if needed
+      if (idDetails.name && idDetails.name !== "Not found") {
+        userData.name = idDetails.name;
+      }
+      
+      if (idDetails.dateOfBirth && idDetails.dateOfBirth !== "Not found") {
+        userData.dateOfBirth = idDetails.dateOfBirth;
+      }
+    }
 
     await collection.insertOne(userData);
 
