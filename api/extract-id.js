@@ -19,7 +19,7 @@ export default async function handler(request) {
   try {
     // Parse the request body
     const data = await request.json();
-    const { image } = data;
+    const { image, englishOnly = false } = data;
 
     if (!image) {
       return new Response(
@@ -37,7 +37,7 @@ export default async function handler(request) {
     const formData = {
       base64Image: base64Image,
       apikey: process.env.OCR_SPACE_API_KEY || 'helloworld',
-      language: 'eng',
+      language: 'eng', // Always use English for OCR
       isOverlayRequired: false,
       scale: true,
       OCREngine: 2, // More accurate engine
@@ -66,23 +66,30 @@ export default async function handler(request) {
       const extractedText = ocrResult.ParsedResults[0].ParsedText;
       console.log("OCR Extracted Text:", extractedText);
       
+      // Filter the text to English-only characters if requested
+      const processedText = englishOnly ? 
+        extractedText.replace(/[^\x00-\x7F]/g, ' ').replace(/\s+/g, ' ').trim() : 
+        extractedText;
+      
+      console.log("Processed Text (englishOnly=" + englishOnly + "):", processedText);
+      
       // Use updated function to extract name and father's name
-      const nameDetails = extractNameFromText(extractedText);
+      const nameDetails = extractNameFromText(processedText);
       
       // Extract additional ID details
-      const dateOfBirth = extractDateOfBirth(extractedText);
-      const placeOfBirth = extractPlaceOfBirth(extractedText);
-      const nationality = extractNationality(extractedText);
-      const gender = extractGender(extractedText);
-      const address = extractAddress(extractedText);
-      const issuingAuthority = extractIssuingAuthority(extractedText);
-      const issueDate = extractIssueDate(extractedText);
+      const dateOfBirth = extractDateOfBirth(processedText);
+      const placeOfBirth = extractPlaceOfBirth(processedText);
+      const nationality = extractNationality(processedText);
+      const gender = extractGender(processedText);
+      const address = extractAddress(processedText);
+      const issuingAuthority = extractIssuingAuthority(processedText);
+      const issueDate = extractIssueDate(processedText);
       
       const idDetails = {
         name: nameDetails.name,
         fatherName: nameDetails.fatherName,
-        idNumber: extractIdNumberFromText(extractedText),
-        expiry: extractExpiryFromText(extractedText),
+        idNumber: extractIdNumberFromText(processedText),
+        expiry: extractExpiryFromText(processedText),
         dateOfBirth,
         placeOfBirth,
         nationality,
