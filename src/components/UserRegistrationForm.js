@@ -525,7 +525,15 @@ export default function UserRegistrationForm() {
     if (step === "completed" && photoFront && !idDetails && !isExtracting) {
       extractIdDetails(photoFront).then((details) => {
         console.log("Extracted ID Details:", details);
+        // Additional logging for the new extracted fields
         if (details) {
+          console.log("Date of Birth:", details.dateOfBirth || "Not found");
+          console.log("Place of Birth:", details.placeOfBirth || "Not found");
+          console.log("Nationality:", details.nationality || "Not found");
+          console.log("Gender:", details.gender || "Not found");
+          console.log("Address:", details.address || "Not found");
+          console.log("Issuing Authority:", details.issuingAuthority || "Not found");
+          console.log("Issue Date:", details.issueDate || "Not found");
           setIdDetails(details);
         }
       });
