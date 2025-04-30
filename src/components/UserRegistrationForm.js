@@ -5,12 +5,15 @@ export default function UserRegistrationForm() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [photoFront, setPhotoFront] = useState(null);
+  const [photoBack, setPhotoBack] = useState(null);
   const [cameraAvailable, setCameraAvailable] = useState(true);
   const [cameraStatus, setCameraStatus] = useState("idle");
   const [isFlipping, setIsFlipping] = useState(false);
   const [faceDetected, setFaceDetected] = useState(false);
   const [mockMode, setMockMode] = useState(false);
   const [idDetails, setIdDetails] = useState(null);
+  const [idDetailsFront, setIdDetailsFront] = useState(null);
+  const [idDetailsBack, setIdDetailsBack] = useState(null);
   const [isUploading, setIsUploading] = useState(false);
   const [isExtracting, setIsExtracting] = useState(false);
   const [faceVerified, setFaceVerified] = useState(null);
@@ -21,13 +24,11 @@ export default function UserRegistrationForm() {
   const [showRetryOptions, setShowRetryOptions] = useState(false);
   const [faceDetectionPaused, setFaceDetectionPaused] = useState(false);
   const [blinked, setBlinked] = useState(false);
-  const [livenessVerified, setLivenessVerified] = useState(false);
-  const [liveChallengeStep, setLiveChallengeStep] = useState(0);
-  const [livenessCheckActive, setLivenessCheckActive] = useState(false);
   const [turnedLeft, setTurnedLeft] = useState(false);
   const [turnedRight, setTurnedRight] = useState(false);
   const [faceBoundingBox, setFaceBoundingBox] = useState(null);
   const [challengeText, setChallengeText] = useState("");
+  const [currentIdSide, setCurrentIdSide] = useState("front");
 
   const videoRef = useRef(null);
   const faceVideoRef = useRef(null);
@@ -36,6 +37,7 @@ export default function UserRegistrationForm() {
   const containerRef = useRef(null);
   const streamRef = useRef(null);
   const fileInputRef = useRef(null);
+  const backFileInputRef = useRef(null);
   const selfieInputRef = useRef(null);
   const lastDetectionTime = useRef(0);
   const lastLivenessCheckTime = useRef(0);
@@ -51,8 +53,14 @@ export default function UserRegistrationForm() {
       setIsUploading(true);
       const reader = new FileReader();
       reader.onload = (e) => {
-        setPhotoFront(e.target.result);
-        handleFlip("completed", "right");
+        if (currentIdSide === "front") {
+          setPhotoFront(e.target.result);
+          setCurrentIdSide("back");
+          handleFlip("cameraBack", "right");
+        } else {
+          setPhotoBack(e.target.result);
+          handleFlip("completed", "right");
+        }
       };
       reader.readAsDataURL(file);
     } catch (error) {
@@ -114,6 +122,7 @@ export default function UserRegistrationForm() {
   };
 
   const handleFormSubmit = () => {
+    setCurrentIdSide("front");
     startCamera();
     handleFlip("camera", "right");
   };
@@ -128,16 +137,31 @@ export default function UserRegistrationForm() {
       const context = canvas.getContext("2d");
       context.drawImage(video, 0, 0, canvas.width, canvas.height);
       const imageData = canvas.toDataURL("image/png");
-      setPhotoFront(imageData);
-      stopCamera();
-      handleFlip("completed", "right");
+      
+      if (currentIdSide === "front") {
+        setPhotoFront(imageData);
+        setCurrentIdSide("back");
+        stopCamera();
+        await handleFlip("cameraBack", "right");
+        startCamera(); // Restart camera for back side
+      } else {
+        setPhotoBack(imageData);
+        stopCamera();
+        await handleFlip("completed", "right");
+      }
     }
   };
 
-  const retakePhoto = async () => {
+  const retakeFrontPhoto = async () => {
+    setCurrentIdSide("front");
     startCamera();
-    await delay(200);
     await handleFlip("camera", "left");
+  };
+
+  const retakeBackPhoto = async () => {
+    setCurrentIdSide("back");
+    startCamera();
+    await handleFlip("cameraBack", "left");
   };
 
   const handleSubmit = async () => {
@@ -150,10 +174,14 @@ export default function UserRegistrationForm() {
     setShowRetryOptions(false);
     setFaceDetectionPaused(false);
     setFaceDetected(false);
+    // Reset liveness states
     setBlinked(false);
+    setTurnedLeft(false);
+    setTurnedRight(false);
     setLivenessVerified(false);
     setLiveChallengeStep(0);
     setLivenessCheckActive(false);
+    setChallengeText("");
     lastDetectionTime.current = 0;
     lastLivenessCheckTime.current = 0;
     startCamera("user", faceVideoRef);
@@ -520,25 +548,68 @@ export default function UserRegistrationForm() {
     }
   }
 
+  // Extract details from both front and back of ID and combine results
+  async function extractCombinedIdDetails() {
+    setIsExtracting(true);
+    
+    try {
+      // Process front image
+      const frontDetails = await extractIdDetails(photoFront);
+      setIdDetailsFront(frontDetails);
+      console.log("Front ID Details:", frontDetails);
+      
+      // Process back image if available
+      let backDetails = null;
+      if (photoBack) {
+        backDetails = await extractIdDetails(photoBack);
+        setIdDetailsBack(backDetails);
+        console.log("Back ID Details:", backDetails);
+      }
+      
+      // Combine results, front takes precedence for duplicate fields
+      const combinedDetails = {
+        ...(backDetails || {}),
+        ...(frontDetails || {}),
+        // Always include both photo sources
+        photoSources: {
+          front: !!photoFront,
+          back: !!photoBack
+        }
+      };
+      
+      console.log("COMBINED ID DETAILS:", combinedDetails);
+      
+      // Log specific extracted fields regardless of source
+      console.log("Date of Birth:", combinedDetails.dateOfBirth || "Not found");
+      console.log("Place of Birth:", combinedDetails.placeOfBirth || "Not found");
+      console.log("Nationality:", combinedDetails.nationality || "Not found");
+      console.log("Gender:", combinedDetails.gender || "Not found");
+      console.log("Address:", combinedDetails.address || "Not found");
+      console.log("Issuing Authority:", combinedDetails.issuingAuthority || "Not found");
+      console.log("Issue Date:", combinedDetails.issueDate || "Not found");
+      
+      return combinedDetails;
+    } catch (error) {
+      console.error("Error extracting combined ID details:", error);
+      return {
+        name: "Not found",
+        idNumber: "Not found",
+        expiry: "Not found",
+        error: "Extraction failed"
+      };
+    } finally {
+      setIsExtracting(false);
+    }
+  }
+
   // Trigger OCR extraction when registration is completed.
   useEffect(() => {
     if (step === "completed" && photoFront && !idDetails && !isExtracting) {
-      extractIdDetails(photoFront).then((details) => {
-        console.log("Extracted ID Details:", details);
-        // Additional logging for the new extracted fields
-        if (details) {
-          console.log("Date of Birth:", details.dateOfBirth || "Not found");
-          console.log("Place of Birth:", details.placeOfBirth || "Not found");
-          console.log("Nationality:", details.nationality || "Not found");
-          console.log("Gender:", details.gender || "Not found");
-          console.log("Address:", details.address || "Not found");
-          console.log("Issuing Authority:", details.issuingAuthority || "Not found");
-          console.log("Issue Date:", details.issueDate || "Not found");
-          setIdDetails(details);
-        }
+      extractCombinedIdDetails().then((details) => {
+        setIdDetails(details);
       });
     }
-  }, [step, photoFront, idDetails, isExtracting]);
+  }, [step, photoFront, photoBack, idDetails, isExtracting]);
 
   useEffect(() => {
     const card = containerRef.current;
@@ -761,6 +832,154 @@ export default function UserRegistrationForm() {
     );
   };
 
+  const renderCameraBackStepContent = () => {
+    return (
+      <div className="text-center space-y-4">
+        <h2 className="text-lg font-medium text-gray-700">
+          Capture ID Back
+        </h2>
+        <div className="w-full h-60 bg-gray-300 flex items-center justify-center rounded overflow-hidden">
+          <video
+            ref={videoRef}
+            autoPlay
+            playsInline
+            muted
+            className="w-full h-full object-cover rounded"
+          />
+          <canvas
+            ref={canvasRef}
+            width={320}
+            height={240}
+            className="hidden"
+          />
+        </div>
+        <div className="flex flex-col md:flex-row justify-center gap-3 mt-4">
+          <button
+            onClick={capturePhoto}
+            className="bg-yellow-400 hover:bg-yellow-300 text-black px-4 py-2 rounded-full shadow-md"
+          >
+            Capture Back
+          </button>
+
+          <input
+            type="file"
+            accept="image/*"
+            ref={backFileInputRef}
+            onChange={handleFileUpload}
+            className="hidden"
+          />
+          <button
+            onClick={() => backFileInputRef.current.click()}
+            disabled={isUploading}
+            className="bg-blue-500 hover:bg-blue-400 text-white px-4 py-2 rounded-full shadow-md"
+          >
+            {isUploading ? "Processing..." : "Upload Image"}
+          </button>
+        </div>
+      </div>
+    );
+  };
+
+  const renderCompletedStepContent = () => {
+    return (
+      <div className="text-center space-y-6">
+        <h2 className="text-2xl font-semibold text-gray-800">
+          Registration Confirmation
+        </h2>
+        <h3 className="text-lg text-gray-700">Email: {email}</h3>
+        
+        {/* ID Front Image */}
+        <div>
+          <div className="relative w-full h-48 bg-gray-300 flex items-center justify-center rounded overflow-hidden">
+            {photoFront ? (
+              <img
+                src={photoFront}
+                alt="Front of ID"
+                className="w-full h-full object-cover"
+              />
+            ) : (
+              <span className="text-gray-600 text-lg">Front Photo Missing</span>
+            )}
+          </div>
+          <div className="text-sm text-gray-500 font-medium pt-1">
+            Front of ID
+          </div>
+        </div>
+        
+        {/* ID Back Image */}
+        <div>
+          <div className="relative w-full h-48 bg-gray-300 flex items-center justify-center rounded overflow-hidden">
+            {photoBack ? (
+              <img
+                src={photoBack}
+                alt="Back of ID"
+                className="w-full h-full object-cover"
+              />
+            ) : (
+              <span className="text-gray-600 text-lg">Back Photo Missing</span>
+            )}
+          </div>
+          <div className="text-sm text-gray-500 font-medium pt-1">
+            Back of ID
+          </div>
+        </div>
+        
+        {/* ID Details Display */}
+        <div className="mt-4 text-xs text-gray-600">
+          {idDetails ? (
+            <div>
+              <p>
+                <strong>Name:</strong> {idDetails.name} {idDetails.fatherName}
+              </p>
+              <p>
+                <strong>ID No:</strong> {idDetails.idNumber}
+              </p>
+              <p>
+                <strong>Expiry:</strong> {idDetails.expiry}
+              </p>
+            </div>
+          ) : isExtracting ? (
+            <div className="flex flex-col items-center justify-center">
+              <p>Scanning ID details...</p>
+              <div className="mt-2 w-8 h-8 border-2 border-gray-300 border-t-yellow-400 rounded-full animate-spin"></div>
+            </div>
+          ) : (
+            <button
+              onClick={() => extractCombinedIdDetails().then(setIdDetails)}
+              className="px-4 py-1 bg-gray-200 hover:bg-gray-300 text-gray-800 rounded-full text-xs"
+            >
+              Scan ID Details
+            </button>
+          )}
+        </div>
+        
+        {/* Action Buttons */}
+        <div className="flex justify-center gap-4 pt-2">
+          <div className="flex flex-col space-y-2">
+            <button
+              onClick={() => retakeFrontPhoto()}
+              className="px-4 py-1 bg-gray-700 text-white hover:bg-gray-600 transition shadow-sm text-sm"
+            >
+              Retake Front
+            </button>
+            <button
+              onClick={() => retakeBackPhoto()}
+              className="px-4 py-1 bg-gray-700 text-white hover:bg-gray-600 transition shadow-sm text-sm"
+            >
+              Retake Back
+            </button>
+          </div>
+          <button
+            onClick={handleSubmit}
+            className="px-6 py-2 bg-yellow-400 hover:bg-yellow-300 text-black transition shadow-md"
+          >
+            Submit
+          </button>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div
       ref={containerRef}
@@ -841,71 +1060,9 @@ export default function UserRegistrationForm() {
         </div>
       )}
 
-      {step === "completed" && (
-        <div className="text-center space-y-6">
-          <h2 className="text-2xl font-semibold text-gray-800">
-            Registration Confirmation
-          </h2>
-          <h3 className="text-lg text-gray-700">Email: {email}</h3>
-          <div className="relative w-full h-60 bg-gray-300 flex items-center justify-center rounded overflow-hidden">
-            {photoFront ? (
-              <img
-                src={photoFront}
-                alt="Front of ID"
-                className="w-full h-full object-cover"
-              />
-            ) : (
-              <span className="text-gray-600 text-lg">Photo Missing</span>
-            )}
-          </div>
-          <div className="text-sm text-gray-500 font-medium pt-1">
-            Front of ID
-          </div>
-          <div className="mt-4 text-xs text-gray-600">
-            {idDetails ? (
-              <div>
-                <p>
-                  <strong>Name:</strong> {idDetails.name} {idDetails.fatherName}
-                </p>
-                <p>
-                  <strong>ID No:</strong> {idDetails.idNumber}
-                </p>
-                <p>
-                  <strong>Expiry:</strong> {idDetails.expiry}
-                </p>
-              </div>
-            ) : isExtracting ? (
-              <div className="flex flex-col items-center justify-center">
-                <p>Scanning ID details...</p>
-                <div className="mt-2 w-8 h-8 border-2 border-gray-300 border-t-yellow-400 rounded-full animate-spin"></div>
-              </div>
-            ) : (
-              <button
-                onClick={() =>
-                  extractIdDetails(photoFront).then(setIdDetails)
-                }
-                className="px-4 py-1 bg-gray-200 hover:bg-gray-300 text-gray-800 rounded-full text-xs"
-              >
-                Scan ID Details
-              </button>
-            )}
-          </div>
-          <div className="flex justify-center gap-4 pt-2">
-            <button
-              onClick={() => retakePhoto()}
-              className="px-5 py-2 bg-gray-800 text-white hover:bg-gray-700 transition shadow-md"
-            >
-              Retake Photo
-            </button>
-            <button
-              onClick={handleSubmit}
-              className="px-6 py-2 bg-yellow-400 hover:bg-yellow-300 text-black transition shadow-md"
-            >
-              Submit
-            </button>
-          </div>
-        </div>
-      )}
+      {step === "cameraBack" && renderCameraBackStepContent()}
+
+      {step === "completed" && renderCompletedStepContent()}
 
       {step === "verification" && renderVerificationStepContent()}
 
@@ -929,6 +1086,7 @@ export default function UserRegistrationForm() {
       
       <canvas ref={canvasRef} className="hidden" />
       <input type="file" ref={fileInputRef} accept="image/*" onChange={handleFileUpload} className="hidden" />
+      <input type="file" ref={backFileInputRef} accept="image/*" onChange={handleFileUpload} className="hidden" />
     </div>
   );
 }
