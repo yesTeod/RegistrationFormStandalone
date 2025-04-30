@@ -26,9 +26,11 @@ export default async function handler(req, res) {
     const response = await client.send(command);
     const faceDetected = Array.isArray(response.FaceDetails) && response.FaceDetails.length > 0;
     
-    // Extract blinking and smiling information if a face is detected
+    // Extract blinking, smiling and pose information if a face is detected
     let isBlinking = false;
     let isSmiling = false;
+    let headPose = { roll: 0, yaw: 0, pitch: 0 };
+    let boundingBox = null;
     
     if (faceDetected && response.FaceDetails[0]) {
       const faceDetails = response.FaceDetails[0];
@@ -40,12 +42,28 @@ export default async function handler(req, res) {
       
       // Check for smiling with high confidence
       isSmiling = faceDetails.Smile && faceDetails.Smile.Value === true && faceDetails.Smile.Confidence > 80;
+      
+      // Get head pose information
+      if (faceDetails.Pose) {
+        headPose = {
+          roll: faceDetails.Pose.Roll,  // Tilt (left/right)
+          yaw: faceDetails.Pose.Yaw,    // Turn (left/right)
+          pitch: faceDetails.Pose.Pitch // Up/down
+        };
+      }
+      
+      // Get face bounding box for UI positioning
+      if (faceDetails.BoundingBox) {
+        boundingBox = faceDetails.BoundingBox;
+      }
     }
 
     return res.status(200).json({ 
       faceDetected,
       isBlinking,
-      isSmiling
+      isSmiling,
+      headPose,
+      boundingBox
     });
   } catch (err) {
     console.error('detect-face error:', err);
