@@ -69,12 +69,31 @@ export default async function handler(request) {
       // Use updated function to extract name and father's name
       const nameDetails = extractNameFromText(extractedText);
       
+      // Extract additional ID details
+      const dateOfBirth = extractDateOfBirth(extractedText);
+      const placeOfBirth = extractPlaceOfBirth(extractedText);
+      const nationality = extractNationality(extractedText);
+      const gender = extractGender(extractedText);
+      const address = extractAddress(extractedText);
+      const issuingAuthority = extractIssuingAuthority(extractedText);
+      const issueDate = extractIssueDate(extractedText);
+      
       const idDetails = {
         name: nameDetails.name,
         fatherName: nameDetails.fatherName,
         idNumber: extractIdNumberFromText(extractedText),
-        expiry: extractExpiryFromText(extractedText)
+        expiry: extractExpiryFromText(extractedText),
+        dateOfBirth,
+        placeOfBirth,
+        nationality,
+        gender,
+        address,
+        issuingAuthority,
+        issueDate
       };
+      
+      // Log the complete extracted details
+      console.log("Full ID extraction results:", JSON.stringify(idDetails, null, 2));
       
       return new Response(
         JSON.stringify(idDetails),
@@ -90,6 +109,13 @@ export default async function handler(request) {
           fatherName: "Not found",
           idNumber: "Not found", 
           expiry: "Not found",
+          dateOfBirth: "Not found",
+          placeOfBirth: "Not found",
+          nationality: "Not found",
+          gender: "Not found",
+          address: "Not found",
+          issuingAuthority: "Not found",
+          issueDate: "Not found",
           debug: { 
             isErrored: ocrResult.IsErroredOnProcessing,
             hasResults: Boolean(ocrResult.ParsedResults),
@@ -107,7 +133,14 @@ export default async function handler(request) {
         name: "Not found", 
         fatherName: "Not found",
         idNumber: "Not found", 
-        expiry: "Not found" 
+        expiry: "Not found",
+        dateOfBirth: "Not found",
+        placeOfBirth: "Not found",
+        nationality: "Not found",
+        gender: "Not found",
+        address: "Not found",
+        issuingAuthority: "Not found",
+        issueDate: "Not found"
       }),
       { status: 200, headers: { 'Content-Type': 'application/json' } }
     );
@@ -157,6 +190,20 @@ function extractNameFromText(text) {
       }
     }
   }
+
+  // Check for patterns like "Name: John Doe" on the same line
+  const namePattern = /name[\s:]+(.*)/i;
+  const nameMatch = text.match(namePattern);
+  if (data.name === "Not found" && nameMatch && nameMatch[1]) {
+    data.name = nameMatch[1].trim();
+  }
+  
+  // Check for "surname" field
+  const surnamePattern = /surname[\s:]+(.*)/i;
+  const surnameMatch = text.match(surnamePattern);
+  if (data.fatherName === "Not found" && surnameMatch && surnameMatch[1]) {
+    data.fatherName = surnameMatch[1].trim();
+  }
   
   return data;
 }
@@ -167,7 +214,8 @@ function extractIdNumberFromText(text) {
   const docPatterns = [
     /doc(?:ument)?\s*(?:no|number|#)?[:\s]*([A-Z0-9\-\/]+)/i,
     /card\s*(?:no|number|#)?[:\s]*([A-Z0-9\-\/]+)/i,
-    /no[:\s]*([A-Z0-9\-\/]{6,})/i
+    /no[:\s]*([A-Z0-9\-\/]{6,})/i,
+    /id[:\s]*([A-Z0-9\-\/]{6,})/i
   ];
   
   for (const pattern of docPatterns) {
@@ -196,7 +244,7 @@ function extractIdNumberFromText(text) {
 
 function extractExpiryFromText(text) {
   // Look for expiry date patterns
-  const expiryRegex = /(?:expiry|expiration|exp|valid until)[:\s]*([\d\/\.\-]+)/i;
+  const expiryRegex = /(?:expiry|expiration|exp|valid until|valid to|expires?(?:\son)?)[:\s]*([\d\/\.\-]+)/i;
   const match = text.match(expiryRegex);
   if (match && match[1]) {
     return match[1].trim();
@@ -207,6 +255,242 @@ function extractExpiryFromText(text) {
   if (datePatterns && datePatterns.length > 0) {
     // Usually the last date on an ID is the expiry
     return datePatterns[datePatterns.length - 1];
+  }
+  
+  return "Not found";
+}
+
+// New extraction functions
+function extractDateOfBirth(text) {
+  // Common formats and labels for date of birth
+  const dobPatterns = [
+    /(?:date of birth|birth date|born|dob|d\.o\.b\.)[:\s]*([\d\/\.\-]+)/i,
+    /(?:date of birth|birth date|born|dob|d\.o\.b\.)[\s\n]+([\d\/\.\-]+)/i
+  ];
+  
+  for (const pattern of dobPatterns) {
+    const match = text.match(pattern);
+    if (match && match[1]) {
+      return match[1].trim();
+    }
+  }
+  
+  // Look for date patterns after "birth" word
+  const lines = text.split('\n');
+  for (let i = 0; i < lines.length; i++) {
+    if (lines[i].toLowerCase().includes('birth') && i + 1 < lines.length) {
+      const nextLine = lines[i + 1];
+      const dateMatch = nextLine.match(/\d{1,2}[\/-]\d{1,2}[\/-]\d{2,4}/);
+      if (dateMatch) {
+        return dateMatch[0];
+      }
+    }
+  }
+  
+  // If we have multiple dates and already found expiry, the first different date might be DOB
+  const expiryDate = extractExpiryFromText(text);
+  const datePatterns = text.match(/\d{1,2}[\/-]\d{1,2}[\/-]\d{2,4}/g);
+  if (datePatterns && datePatterns.length > 1) {
+    // Find first date that's not the expiry date
+    for (const date of datePatterns) {
+      if (date !== expiryDate) {
+        return date;
+      }
+    }
+  }
+  
+  return "Not found";
+}
+
+function extractPlaceOfBirth(text) {
+  // Look for place of birth patterns
+  const pobPatterns = [
+    /(?:place of birth|birth place|pob)[:\s]*([A-Za-z\s]+)/i,
+    /(?:place of birth|birth place|pob)[\s\n]+([A-Za-z\s]+)/i
+  ];
+  
+  for (const pattern of pobPatterns) {
+    const match = text.match(pattern);
+    if (match && match[1]) {
+      return match[1].trim();
+    }
+  }
+  
+  // Look for "birth" followed by a place name
+  const lines = text.split('\n');
+  for (let i = 0; i < lines.length; i++) {
+    if (lines[i].toLowerCase().includes('birth') && !lines[i].match(/\d{1,2}[\/-]\d{1,2}[\/-]\d{2,4}/)) {
+      // Extract everything after "birth" if it doesn't contain a date
+      const birthPlace = lines[i].replace(/.*(?:birth|pob)[:\s]*/i, '').trim();
+      if (birthPlace && !/^\d+$/.test(birthPlace)) {
+        return birthPlace;
+      }
+      
+      // Or check the next line if current line just contains the label
+      if (i + 1 < lines.length && lines[i+1].trim() && !/^\d+$/.test(lines[i+1])) {
+        return lines[i+1].trim();
+      }
+    }
+  }
+  
+  return "Not found";
+}
+
+function extractNationality(text) {
+  // Look for nationality patterns
+  const nationalityPatterns = [
+    /(?:nationality|citizen(?:ship)?)[:\s]*([A-Za-z\s]+)/i,
+    /(?:nationality|citizen(?:ship)?)[\s\n]+([A-Za-z\s]+)/i
+  ];
+  
+  for (const pattern of nationalityPatterns) {
+    const match = text.match(pattern);
+    if (match && match[1]) {
+      return match[1].trim();
+    }
+  }
+  
+  // Check for nationality by line detection
+  const lines = text.split('\n');
+  for (let i = 0; i < lines.length; i++) {
+    if (lines[i].toLowerCase().match(/^(?:nationality|citizen)/i) && i + 1 < lines.length) {
+      return lines[i + 1].trim();
+    }
+  }
+  
+  return "Not found";
+}
+
+function extractGender(text) {
+  // Look for gender/sex patterns
+  const genderPatterns = [
+    /(?:gender|sex)[:\s]*([MF]|Male|Female|Other)/i,
+    /(?:gender|sex)[\s\n]+([MF]|Male|Female|Other)/i
+  ];
+  
+  for (const pattern of genderPatterns) {
+    const match = text.match(pattern);
+    if (match && match[1]) {
+      return match[1].trim();
+    }
+  }
+  
+  // Look for just M or F preceded or followed by a delimiter
+  const simpleGenderMatch = text.match(/[^A-Za-z]([MF])[^A-Za-z]/i);
+  if (simpleGenderMatch && simpleGenderMatch[1]) {
+    return simpleGenderMatch[1].toUpperCase();
+  }
+  
+  return "Not found";
+}
+
+function extractAddress(text) {
+  // Look for address patterns
+  const addressPatterns = [
+    /(?:address|residence)[:\s]*([^\n]+)/i,
+    /(?:address|residence)[\s\n]+([^\n]+)/i
+  ];
+  
+  for (const pattern of addressPatterns) {
+    const match = text.match(pattern);
+    if (match && match[1]) {
+      return match[1].trim();
+    }
+  }
+  
+  // Check for address by line detection
+  const lines = text.split('\n');
+  for (let i = 0; i < lines.length; i++) {
+    if (lines[i].toLowerCase().match(/^(?:address|residence)/i) && i + 1 < lines.length) {
+      // Address might span multiple lines
+      let address = lines[i + 1].trim();
+      // Check if next line might be part of address (no known label and not a date)
+      if (i + 2 < lines.length && 
+          !lines[i + 2].match(/^[A-Za-z]+[\s:]/i) && 
+          !lines[i + 2].match(/\d{1,2}[\/-]\d{1,2}[\/-]\d{2,4}/)) {
+        address += ", " + lines[i + 2].trim();
+      }
+      return address;
+    }
+  }
+  
+  return "Not found";
+}
+
+function extractIssuingAuthority(text) {
+  // Look for issuing authority patterns
+  const authorityPatterns = [
+    /(?:issuing authority|issued by|authority|issuer)[:\s]*([^\n]+)/i,
+    /(?:issuing authority|issued by|authority|issuer)[\s\n]+([^\n]+)/i
+  ];
+  
+  for (const pattern of authorityPatterns) {
+    const match = text.match(pattern);
+    if (match && match[1]) {
+      return match[1].trim();
+    }
+  }
+  
+  // Check by line detection
+  const lines = text.split('\n');
+  for (let i = 0; i < lines.length; i++) {
+    if (lines[i].toLowerCase().match(/(?:issuing|issued|authority)/i) && 
+        !lines[i].match(/date/i) && 
+        i + 1 < lines.length) {
+      return lines[i + 1].trim();
+    }
+  }
+  
+  return "Not found";
+}
+
+function extractIssueDate(text) {
+  // Look for issue date patterns
+  const issueDatePatterns = [
+    /(?:date of issue|issued on|issued|issue date)[:\s]*([\d\/\.\-]+)/i,
+    /(?:date of issue|issued on|issued|issue date)[\s\n]+([\d\/\.\-]+)/i
+  ];
+  
+  for (const pattern of issueDatePatterns) {
+    const match = text.match(pattern);
+    if (match && match[1]) {
+      return match[1].trim();
+    }
+  }
+  
+  // Check for dates near "issue" word
+  const lines = text.split('\n');
+  for (let i = 0; i < lines.length; i++) {
+    if (lines[i].toLowerCase().includes('issue') && !lines[i].toLowerCase().includes('expir')) {
+      // Check current line for dates
+      const dateMatch = lines[i].match(/\d{1,2}[\/-]\d{1,2}[\/-]\d{2,4}/);
+      if (dateMatch) {
+        return dateMatch[0];
+      }
+      
+      // Check next line for dates
+      if (i + 1 < lines.length) {
+        const nextLineDateMatch = lines[i + 1].match(/\d{1,2}[\/-]\d{1,2}[\/-]\d{2,4}/);
+        if (nextLineDateMatch) {
+          return nextLineDateMatch[0];
+        }
+      }
+    }
+  }
+  
+  // If we have multiple dates and already found expiry and DOB,
+  // another date might be the issue date
+  const expiryDate = extractExpiryFromText(text);
+  const dobDate = extractDateOfBirth(text);
+  const datePatterns = text.match(/\d{1,2}[\/-]\d{1,2}[\/-]\d{2,4}/g);
+  
+  if (datePatterns && datePatterns.length > 2) {
+    // Find a date that's not expiry or DOB
+    for (const date of datePatterns) {
+      if (date !== expiryDate && date !== dobDate) {
+        return date;
+      }
+    }
   }
   
   return "Not found";
