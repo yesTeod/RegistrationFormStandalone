@@ -1,6 +1,5 @@
 // Using node-fetch for API requests
 import fetch from 'node-fetch';
-import { extractStructuredIdDetails } from './extract-structured-id';
 
 // This is a Vercel Edge Function - better for long-running processes
 export const config = {
