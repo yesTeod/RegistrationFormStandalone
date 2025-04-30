@@ -1,7 +1,3 @@
-// Using node-fetch for API requests
-import fetch from 'node-fetch';
-import { extractStructuredIdDetails } from './extract-structured-id';
-
 // This is a Vercel Edge Function - better for long-running processes
 export const config = {
   runtime: 'edge',
@@ -57,153 +53,22 @@ const FIELD_PATTERNS = {
 
 // Common date formats for validation
 const DATE_PATTERNS = [
-  /\b\d{1,2}[\/-]\d{1,2}[\/-]\d{2,4}\b/,           // DD/MM/YYYY, MM/DD/YYYY
-  /\b\d{2,4}[\/-]\d{1,2}[\/-]\d{1,2}\b/,           // YYYY/MM/DD
-  /\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]* \d{1,2},? \d{2,4}\b/i,  // Month DD, YYYY
-  /\b\d{1,2} (?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]* \d{2,4}\b/i     // DD Month YYYY
+  /\b\d{1,2}[\/-]\d{1,2}[\/-]\d{2,4}\b/,
+  /\b\d{2,4}[\/-]\d{1,2}[\/-]\d{1,2}\b/,
+  /\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]* \d{1,2},? \d{2,4}\b/i, 
+  /\b\d{1,2} (?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]* \d{2,4}\b/i
 ];
 
 // ID number patterns (vary by country)
 const ID_NUMBER_PATTERNS = [
-  /\b[A-Z]{1,3}\d{5,10}\b/,                        // Alphanumeric (letters then numbers)
-  /\b\d{5,12}\b/,                                  // Pure digits
-  /\b[A-Z0-9]{6,12}\b/,                            // Mixed alphanumeric
-  /\b[A-Z]{1,3}[-\s]?\d{5,9}\b/                    // Letters with separator then numbers
+  /\b[A-Z]{1,3}\d{5,10}\b/,
+  /\b\d{5,12}\b/,
+  /\b[A-Z0-9]{6,12}\b/,
+  /\b[A-Z]{1,3}[-\s]?\d{5,9}\b/
 ];
-
-export default async function handler(request) {
-  // Only accept POST requests
-  if (request.method !== 'POST') {
-    return new Response(
-      JSON.stringify({ error: 'Method not allowed' }),
-      { status: 405, headers: { 'Content-Type': 'application/json' } }
-    );
-  }
-
-  try {
-    // Parse the request body
-    const data = await request.json();
-    const { image, englishOnly = false } = data;
-
-    if (!image) {
-      return new Response(
-        JSON.stringify({ error: "Image data is required" }),
-        { status: 400, headers: { 'Content-Type': 'application/json' } }
-      );
-    }
-
-    // Keep the original data URI format if it exists, or add it if it doesn't
-    const base64Image = image.startsWith('data:image/') 
-      ? image 
-      : `data:image/jpeg;base64,${image}`;
-    
-    // Call OCR.space API
-    const formData = {
-      base64Image: base64Image,
-      apikey: process.env.OCR_SPACE_API_KEY || 'helloworld',
-      language: 'eng', // Always use English for OCR
-      isOverlayRequired: false,
-      scale: true,
-      OCREngine: 2, // More accurate engine
-      detectOrientation: true, // Auto-detect image orientation
-      filetype: 'jpg',  // Use lowercase 'jpg'
-      isTable: false    // Set to true for structured data extraction, useful for IDs
-    };
-
-    console.log('Sending request to OCR.space...');
-    
-    const ocrResponse = await fetch('https://api.ocr.space/parse/image', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-      },
-      body: new URLSearchParams(formData).toString()
-    });
-    
-    if (!ocrResponse.ok) {
-      throw new Error(`OCR API responded with status: ${ocrResponse.status}`);
-    }
-
-    const ocrResult = await ocrResponse.json();
-    console.log('OCR Response:', JSON.stringify(ocrResult, null, 2));
-    
-    if (!ocrResult.IsErroredOnProcessing && ocrResult.ParsedResults && ocrResult.ParsedResults.length > 0) {
-      const extractedText = ocrResult.ParsedResults[0].ParsedText;
-      console.log("OCR Extracted Text:", extractedText);
-      
-      // Filter the text to English-only characters if requested
-      const processedText = englishOnly ? 
-        extractedText.replace(/[^\x00-\x7F]/g, ' ').replace(/\s+/g, ' ').trim() : 
-        extractedText;
-      
-      console.log("Processed Text (englishOnly=" + englishOnly + "):", processedText);
-      
-      // Use our structured approach for more accurate extraction
-      const idDetails = extractStructuredIdDetails(processedText);
-      
-      // Log the complete extracted details
-      console.log("Full ID extraction results:", JSON.stringify(idDetails, null, 2));
-      
-      return new Response(
-        JSON.stringify(idDetails),
-        { status: 200, headers: { 'Content-Type': 'application/json' } }
-      );
-    } else {
-      const errorMessage = ocrResult.ErrorMessage || ocrResult.ErrorDetails || "Unknown OCR processing error";
-      console.error("OCR Processing Error:", errorMessage);
-      return new Response(
-        JSON.stringify({ 
-          error: errorMessage, 
-          name: "Not found", 
-          fatherName: "Not found",
-          idNumber: "Not found", 
-          expiry: "Not found",
-          dateOfBirth: "Not found",
-          placeOfBirth: "Not found",
-          nationality: "Not found",
-          gender: "Not found",
-          address: "Not found",
-          issuingAuthority: "Not found",
-          issueDate: "Not found",
-          debug: { 
-            isErrored: ocrResult.IsErroredOnProcessing,
-            hasResults: Boolean(ocrResult.ParsedResults),
-            resultCount: ocrResult.ParsedResults?.length || 0
-          }
-        }),
-        { status: 200, headers: { 'Content-Type': 'application/json' } }
-      );
-    }
-  } catch (error) {
-    console.error('Error processing request:', error);
-    return new Response(
-      JSON.stringify({ 
-        error: error.message || "Processing error", 
-        name: "Not found", 
-        fatherName: "Not found",
-        idNumber: "Not found", 
-        expiry: "Not found",
-        dateOfBirth: "Not found",
-        placeOfBirth: "Not found",
-        nationality: "Not found",
-        gender: "Not found",
-        address: "Not found",
-        issuingAuthority: "Not found",
-        issueDate: "Not found"
-      }),
-      { status: 200, headers: { 'Content-Type': 'application/json' } }
-    );
-  }
-}
 
 /**
  * Extract ID details using a structured approach
- * 
- * This function uses multiple techniques to extract information:
- * 1. Label-based extraction (looking for field labels)
- * 2. Position-based extraction (next line after label)
- * 3. Pattern-based extraction (ID numbers, dates, etc.)
- * 4. Format validation of extracted values
  */
 function extractStructuredIdDetails(text) {
   // Initialize results with default values
@@ -229,12 +94,6 @@ function extractStructuredIdDetails(text) {
   
   // Create a single string for pattern matching
   const singleLineText = lines.join(' ');
-  
-  // Create a mapping of line index to content for label-based extraction
-  const lineMap = {};
-  lines.forEach((line, index) => {
-    lineMap[index] = line;
-  });
   
   // First, try to extract using label patterns
   // This works by finding lines that contain field labels
@@ -283,10 +142,8 @@ function extractStructuredIdDetails(text) {
   // Extract dates if not found via labels
   const allDates = [];
   for (const pattern of DATE_PATTERNS) {
-    const matches = singleLineText.matchAll(new RegExp(pattern, 'g'));
-    for (const match of matches) {
-      allDates.push(match[0]);
-    }
+    const matches = singleLineText.match(new RegExp(pattern, 'g')) || [];
+    matches.forEach(match => allDates.push(match));
   }
   
   // Assign dates based on context if they weren't found by labels
@@ -374,4 +231,128 @@ function extractStructuredIdDetails(text) {
   });
   
   return result;
+}
+
+export default async function handler(request) {
+  // Only accept POST requests
+  if (request.method !== 'POST') {
+    return new Response(
+      JSON.stringify({ error: 'Method not allowed' }),
+      { status: 405, headers: { 'Content-Type': 'application/json' } }
+    );
+  }
+
+  try {
+    // Parse the request body
+    const data = await request.json();
+    const { image, englishOnly = false } = data;
+
+    if (!image) {
+      return new Response(
+        JSON.stringify({ error: "Image data is required" }),
+        { status: 400, headers: { 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Keep the original data URI format if it exists, or add it if it doesn't
+    const base64Image = image.startsWith('data:image/') 
+      ? image 
+      : `data:image/jpeg;base64,${image}`;
+    
+    // Call OCR.space API using the native fetch (no node-fetch needed in Edge Functions)
+    const formData = {
+      base64Image: base64Image,
+      apikey: process.env.OCR_SPACE_API_KEY || 'helloworld',
+      language: 'eng', // Always use English for OCR
+      isOverlayRequired: false,
+      scale: true,
+      OCREngine: 2, // More accurate engine
+      detectOrientation: true, // Auto-detect image orientation
+      filetype: 'jpg'  // Use lowercase 'jpg'
+    };
+
+    console.log('Sending request to OCR.space...');
+    
+    const ocrResponse = await fetch('https://api.ocr.space/parse/image', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: new URLSearchParams(formData).toString()
+    });
+    
+    if (!ocrResponse.ok) {
+      throw new Error(`OCR API responded with status: ${ocrResponse.status}`);
+    }
+
+    const ocrResult = await ocrResponse.json();
+    console.log('OCR Response:', JSON.stringify(ocrResult, null, 2));
+    
+    if (!ocrResult.IsErroredOnProcessing && ocrResult.ParsedResults && ocrResult.ParsedResults.length > 0) {
+      const extractedText = ocrResult.ParsedResults[0].ParsedText;
+      console.log("OCR Extracted Text:", extractedText);
+      
+      // Filter the text to English-only characters if requested
+      const processedText = englishOnly ? 
+        extractedText.replace(/[^\x00-\x7F]/g, ' ').replace(/\s+/g, ' ').trim() : 
+        extractedText;
+      
+      console.log("Processed Text (englishOnly=" + englishOnly + "):", processedText);
+      
+      // Use our structured approach for more accurate extraction
+      const idDetails = extractStructuredIdDetails(processedText);
+      
+      // Log the complete extracted details
+      console.log("Full ID extraction results:", JSON.stringify(idDetails, null, 2));
+      
+      return new Response(
+        JSON.stringify(idDetails),
+        { status: 200, headers: { 'Content-Type': 'application/json' } }
+      );
+    } else {
+      const errorMessage = ocrResult.ErrorMessage || ocrResult.ErrorDetails || "Unknown OCR processing error";
+      console.error("OCR Processing Error:", errorMessage);
+      return new Response(
+        JSON.stringify({ 
+          error: errorMessage, 
+          name: "Not found", 
+          fatherName: "Not found",
+          idNumber: "Not found", 
+          expiry: "Not found",
+          dateOfBirth: "Not found",
+          placeOfBirth: "Not found",
+          nationality: "Not found",
+          gender: "Not found",
+          address: "Not found",
+          issuingAuthority: "Not found",
+          issueDate: "Not found",
+          debug: { 
+            isErrored: ocrResult.IsErroredOnProcessing,
+            hasResults: Boolean(ocrResult.ParsedResults),
+            resultCount: ocrResult.ParsedResults?.length || 0
+          }
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } }
+      );
+    }
+  } catch (error) {
+    console.error('Error processing request:', error);
+    return new Response(
+      JSON.stringify({ 
+        error: error.message || "Processing error", 
+        name: "Not found", 
+        fatherName: "Not found",
+        idNumber: "Not found", 
+        expiry: "Not found",
+        dateOfBirth: "Not found",
+        placeOfBirth: "Not found",
+        nationality: "Not found",
+        gender: "Not found",
+        address: "Not found",
+        issuingAuthority: "Not found",
+        issueDate: "Not found"
+      }),
+      { status: 200, headers: { 'Content-Type': 'application/json' } }
+    );
+  }
 }
