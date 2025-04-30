@@ -20,6 +20,11 @@ export default function UserRegistrationForm() {
   const [verificationAttempts, setVerificationAttempts] = useState(0);
   const [showRetryOptions, setShowRetryOptions] = useState(false);
   const [faceDetectionPaused, setFaceDetectionPaused] = useState(false);
+  const [blinked, setBlinked] = useState(false);
+  const [smiled, setSmiled] = useState(false);
+  const [livenessVerified, setLivenessVerified] = useState(false);
+  const [liveChallengeStep, setLiveChallengeStep] = useState(0);
+  const [livenessCheckActive, setLivenessCheckActive] = useState(false);
 
   const videoRef = useRef(null);
   const faceVideoRef = useRef(null);
@@ -30,6 +35,7 @@ export default function UserRegistrationForm() {
   const fileInputRef = useRef(null);
   const selfieInputRef = useRef(null);
   const lastDetectionTime = useRef(0);
+  const lastLivenessCheckTime = useRef(0);
 
   const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -141,7 +147,13 @@ export default function UserRegistrationForm() {
     setShowRetryOptions(false);
     setFaceDetectionPaused(false);
     setFaceDetected(false);
+    setBlinked(false);
+    setSmiled(false);
+    setLivenessVerified(false);
+    setLiveChallengeStep(0);
+    setLivenessCheckActive(false);
     lastDetectionTime.current = 0;
+    lastLivenessCheckTime.current = 0;
     startCamera("user", faceVideoRef);
   };
 
@@ -169,6 +181,27 @@ export default function UserRegistrationForm() {
         setFaceError(json.error || 'Detection error');
       } else {
         setFaceDetected(json.faceDetected);
+        
+        // Process liveness data only if liveness check is active
+        if (livenessCheckActive && json.faceDetected) {
+          // Handle blinking detection during blink challenge
+          if (liveChallengeStep === 1 && json.isBlinking) {
+            setBlinked(true);
+            // Move to next challenge after successful blink
+            setLiveChallengeStep(2);
+          }
+          
+          // Handle smiling detection during smile challenge
+          if (liveChallengeStep === 2 && json.isSmiling) {
+            setSmiled(true);
+            
+            // If both challenges passed, mark liveness as verified
+            if (blinked) {
+              setLivenessVerified(true);
+              setLivenessCheckActive(false);
+            }
+          }
+        }
       }
     } catch (e) {
       setFaceDetected(false);
@@ -176,6 +209,59 @@ export default function UserRegistrationForm() {
     } finally {
       setDetecting(false);
     }
+  };
+
+  // Liveness check function with rate limiting - separate from face detection
+  const checkLiveness = async (dataURL) => {
+    // Rate limit to every 2 seconds
+    const now = Date.now();
+    if (now - lastLivenessCheckTime.current < 2000 || !livenessCheckActive || faceDetectionPaused) {
+      return; // Skip this liveness check cycle
+    }
+    
+    lastLivenessCheckTime.current = now;
+    
+    try {
+      const res = await fetch('/api/detect-face', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ image: dataURL }),
+      });
+      const json = await res.json();
+      
+      if (res.ok && json.faceDetected) {
+        // Process liveness actions based on current step
+        if (liveChallengeStep === 1 && json.isBlinking) {
+          // Detected blinking
+          setBlinked(true);
+          // Move to smile challenge
+          setLiveChallengeStep(2);
+        } else if (liveChallengeStep === 2 && json.isSmiling) {
+          // Detected smiling
+          setSmiled(true);
+          
+          // If both challenges passed
+          if (blinked) {
+            setLivenessVerified(true);
+            setLivenessCheckActive(false);
+          }
+        }
+      }
+    } catch (e) {
+      console.error('Liveness check error:', e);
+    }
+  };
+
+  // Start liveness verification process
+  const startLivenessCheck = () => {
+    // Reset liveness states
+    setBlinked(false);
+    setSmiled(false);
+    setLivenessVerified(false);
+    // Start with blink challenge
+    setLiveChallengeStep(1);
+    setLivenessCheckActive(true);
+    lastLivenessCheckTime.current = 0; // Reset timer to allow immediate first check
   };
 
   // On verification step, poll for face detection with rate limiting
@@ -198,8 +284,39 @@ export default function UserRegistrationForm() {
     return () => clearInterval(interval);
   }, [step, faceDetectionPaused]);
 
+  // Separate effect for liveness checks
+  useEffect(() => {
+    let interval;
+    if (step === 'verification' && livenessCheckActive && !faceDetectionPaused) {
+      interval = setInterval(() => {
+        if (faceCanvasRef.current) {
+          const canvas = faceCanvasRef.current;
+          const context = canvas.getContext("2d");
+          // Make sure video is ready
+          if (faceVideoRef.current && faceVideoRef.current.readyState >= 2) {
+            context.drawImage(faceVideoRef.current, 0, 0, 320, 240);
+            const dataURL = canvas.toDataURL('image/png');
+            checkLiveness(dataURL);
+          }
+        }
+      }, 2000); // Check every 2 seconds for liveness
+    }
+    return () => clearInterval(interval);
+  }, [step, livenessCheckActive, faceDetectionPaused, liveChallengeStep, blinked]);
+
   // AWS Rekognition call
   const verifyFace = async () => {
+    // Start liveness verification first
+    if (!livenessVerified && !livenessCheckActive) {
+      startLivenessCheck();
+      return;
+    }
+    
+    // Only proceed with face verification if liveness is verified
+    if (!livenessVerified) {
+      return;
+    }
+    
     setVerifying(true);
     setShowRetryOptions(false);
     setFaceDetectionPaused(true); // Pause detection during verification
@@ -243,7 +360,14 @@ export default function UserRegistrationForm() {
     setFaceVerified(null);
     setShowRetryOptions(false);
     setFaceDetectionPaused(false);
+    // Reset liveness states
+    setBlinked(false);
+    setSmiled(false);
+    setLivenessVerified(false);
+    setLiveChallengeStep(0);
+    setLivenessCheckActive(false);
     lastDetectionTime.current = 0; // Reset timer to allow immediate detection
+    lastLivenessCheckTime.current = 0;
   };
 
   // --- Verify via upload ---
@@ -253,6 +377,10 @@ export default function UserRegistrationForm() {
     setVerifying(true);
     setShowRetryOptions(false);
     setFaceDetectionPaused(true); // Pause detection during verification
+    
+    // Skip liveness check for uploaded selfies - we're assuming the user is providing a legitimate selfie
+    setLivenessVerified(true);
+    setLivenessCheckActive(false);
     
     const reader = new FileReader();
     reader.onload = async (ev) => {
@@ -428,11 +556,44 @@ export default function UserRegistrationForm() {
           <canvas ref={faceCanvasRef} width={320} height={240} className="absolute top-0 left-0 opacity-0" />
         </div>
 
-        {/* Status indicators */}
-        {faceVerified === null && (
+        {/* Liveness challenge instructions */}
+        {faceVerified === null && livenessCheckActive && (
+          <div className="bg-yellow-50 p-3 rounded-lg border border-yellow-300">
+            <h3 className="text-yellow-800 font-medium">Liveness Check</h3>
+            {liveChallengeStep === 1 && (
+              <div className="mt-2">
+                <p className="text-yellow-700 font-medium">Please blink your eyes</p>
+                {blinked ? (
+                  <p className="text-green-600 text-sm">✓ Blink detected! Now please smile.</p>
+                ) : (
+                  <p className="text-yellow-600 text-sm">Looking for eye blink...</p>
+                )}
+              </div>
+            )}
+            {liveChallengeStep === 2 && (
+              <div className="mt-2">
+                <p className="text-yellow-700 font-medium">Now please smile</p>
+                {smiled ? (
+                  <p className="text-green-600 text-sm">✓ Smile detected! Liveness verified.</p>
+                ) : (
+                  <p className="text-yellow-600 text-sm">Looking for smile...</p>
+                )}
+              </div>
+            )}
+            <div className="w-full bg-gray-200 rounded-full h-2 mt-2">
+              <div 
+                className="bg-yellow-500 h-2 rounded-full" 
+                style={{ width: `${(liveChallengeStep === 1 && !blinked) ? 33 : (liveChallengeStep === 2 && !smiled) ? 66 : 100}%` }}
+              ></div>
+            </div>
+          </div>
+        )}
+
+        {/* Status indicators - only show when not in liveness check */}
+        {faceVerified === null && !livenessCheckActive && (
           <div className="text-sm">
             {detecting && <p className="text-blue-600">Detecting face...</p>}
-            {!detecting && faceDetected && <p className="text-green-600">Face detected - Please look directly at camera</p>}
+            {!detecting && faceDetected && <p className="text-green-600">Face detected - Ready for verification</p>}
             {!detecting && !faceDetected && <p className="text-amber-600">No face detected, please align your face within the frame</p>}
             {faceError && <p className="text-red-600 text-xs">{faceError}</p>}
           </div>
@@ -502,23 +663,25 @@ export default function UserRegistrationForm() {
         )}
 
         {/* Action buttons - only show when not displaying result or retry options */}
-        {faceVerified === null && (
+        {faceVerified === null && !showRetryOptions && (
           <div className="flex justify-center space-x-4">
             <button
               onClick={verifyFace}
-              disabled={!faceDetected || verifying}
+              disabled={!faceDetected || verifying || (livenessCheckActive && !livenessVerified)}
               className={`px-4 py-2 rounded-full transition-colors ${
-                faceDetected && !verifying
+                faceDetected && !verifying && (!livenessCheckActive || livenessVerified)
                   ? "bg-yellow-400 hover:bg-yellow-300 text-black"
                   : "bg-gray-300 text-gray-500 cursor-not-allowed"
               }`}
             >
-              {verifying ? 'Verifying...' : 'Verify Face'}
+              {verifying ? 'Verifying...' : livenessCheckActive ? 'Performing Liveness Check...' : livenessVerified ? 'Verify Face' : 'Start Verification'}
             </button>
             <button
               onClick={() => selfieInputRef.current.click()}
-              disabled={verifying}
-              className="px-4 py-2 bg-blue-500 hover:bg-blue-400 text-white rounded-full"
+              disabled={verifying || livenessCheckActive}
+              className={`px-4 py-2 bg-blue-500 hover:bg-blue-400 text-white rounded-full ${
+                verifying || livenessCheckActive ? 'opacity-50 cursor-not-allowed' : ''
+              }`}
             >
               {verifying ? 'Uploading...' : 'Upload Selfie'}
             </button>
