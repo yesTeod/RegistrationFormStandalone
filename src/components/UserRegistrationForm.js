@@ -25,6 +25,10 @@ export default function UserRegistrationForm() {
   const [livenessVerified, setLivenessVerified] = useState(false);
   const [liveChallengeStep, setLiveChallengeStep] = useState(0);
   const [livenessCheckActive, setLivenessCheckActive] = useState(false);
+  const [turnedLeft, setTurnedLeft] = useState(false);
+  const [turnedRight, setTurnedRight] = useState(false);
+  const [faceBoundingBox, setFaceBoundingBox] = useState(null);
+  const [challengeText, setChallengeText] = useState("");
 
   const videoRef = useRef(null);
   const faceVideoRef = useRef(null);
@@ -182,25 +186,9 @@ export default function UserRegistrationForm() {
       } else {
         setFaceDetected(json.faceDetected);
         
-        // Process liveness data only if liveness check is active
-        if (livenessCheckActive && json.faceDetected) {
-          // Handle blinking detection during blink challenge
-          if (liveChallengeStep === 1 && json.isBlinking) {
-            setBlinked(true);
-            // Move to next challenge after successful blink
-            setLiveChallengeStep(2);
-          }
-          
-          // Handle smiling detection during smile challenge
-          if (liveChallengeStep === 2 && json.isSmiling) {
-            setSmiled(true);
-            
-            // If both challenges passed, mark liveness as verified
-            if (blinked) {
-              setLivenessVerified(true);
-              setLivenessCheckActive(false);
-            }
-          }
+        // Store face bounding box for UI positioning
+        if (json.faceDetected && json.boundingBox) {
+          setFaceBoundingBox(json.boundingBox);
         }
       }
     } catch (e) {
@@ -230,20 +218,39 @@ export default function UserRegistrationForm() {
       const json = await res.json();
       
       if (res.ok && json.faceDetected) {
+        // Store face bounding box for UI positioning
+        if (json.boundingBox) {
+          setFaceBoundingBox(json.boundingBox);
+        }
+        
         // Process liveness actions based on current step
         if (liveChallengeStep === 1 && json.isBlinking) {
           // Detected blinking
           setBlinked(true);
           // Move to smile challenge
           setLiveChallengeStep(2);
+          setChallengeText("Great! Now please smile");
         } else if (liveChallengeStep === 2 && json.isSmiling) {
           // Detected smiling
           setSmiled(true);
+          // Move to turn left challenge
+          setLiveChallengeStep(3);
+          setChallengeText("Perfect! Now turn your head left");
+        } else if (liveChallengeStep === 3 && json.headPose && json.headPose.yaw < -15) {
+          // Detected head turn left (negative yaw value)
+          setTurnedLeft(true);
+          // Move to turn right challenge
+          setLiveChallengeStep(4);
+          setChallengeText("Excellent! Now turn your head right");
+        } else if (liveChallengeStep === 4 && json.headPose && json.headPose.yaw > 15) {
+          // Detected head turn right (positive yaw value)
+          setTurnedRight(true);
           
-          // If both challenges passed
-          if (blinked) {
+          // If all challenges passed
+          if (blinked && smiled && turnedLeft) {
             setLivenessVerified(true);
             setLivenessCheckActive(false);
+            setChallengeText("Liveness verified! You can proceed.");
           }
         }
       }
@@ -257,11 +264,54 @@ export default function UserRegistrationForm() {
     // Reset liveness states
     setBlinked(false);
     setSmiled(false);
+    setTurnedLeft(false);
+    setTurnedRight(false);
     setLivenessVerified(false);
     // Start with blink challenge
     setLiveChallengeStep(1);
+    setChallengeText("Please blink your eyes");
     setLivenessCheckActive(true);
     lastLivenessCheckTime.current = 0; // Reset timer to allow immediate first check
+  };
+
+  // Calculate progress percentage based on completed challenges
+  const calculateLivenessProgress = () => {
+    const totalSteps = 4; // Blink, smile, turn left, turn right
+    let completedSteps = 0;
+    
+    if (blinked) completedSteps++;
+    if (smiled) completedSteps++;
+    if (turnedLeft) completedSteps++;
+    if (turnedRight) completedSteps++;
+    
+    return (completedSteps / totalSteps) * 100;
+  };
+  
+  // Get the appropriate oval guide color based on the current step
+  const getGuideColor = () => {
+    if (liveChallengeStep === 1) return "blue"; // Blink
+    if (liveChallengeStep === 2) return "yellow"; // Smile
+    if (liveChallengeStep === 3) return "green"; // Turn left
+    if (liveChallengeStep === 4) return "purple"; // Turn right
+    return "gray";
+  };
+
+  // Reset verification state for retry
+  const handleRetryVerification = () => {
+    setFaceVerified(null);
+    setShowRetryOptions(false);
+    setFaceDetectionPaused(false);
+    // Reset liveness states
+    setBlinked(false);
+    setSmiled(false);
+    setTurnedLeft(false);
+    setTurnedRight(false);
+    setLivenessVerified(false);
+    setLiveChallengeStep(0);
+    setLivenessCheckActive(false);
+    setChallengeText("");
+    lastDetectionTime.current = 0; // Reset timer to allow immediate detection
+    lastLivenessCheckTime.current = 0;
   };
 
   // On verification step, poll for face detection with rate limiting
@@ -355,21 +405,6 @@ export default function UserRegistrationForm() {
     }
   };
 
-  // Reset verification state for retry
-  const handleRetryVerification = () => {
-    setFaceVerified(null);
-    setShowRetryOptions(false);
-    setFaceDetectionPaused(false);
-    // Reset liveness states
-    setBlinked(false);
-    setSmiled(false);
-    setLivenessVerified(false);
-    setLiveChallengeStep(0);
-    setLivenessCheckActive(false);
-    lastDetectionTime.current = 0; // Reset timer to allow immediate detection
-    lastLivenessCheckTime.current = 0;
-  };
-
   // --- Verify via upload ---
   const handleSelfieUpload = (e) => {
     const file = e.target.files[0];
@@ -379,8 +414,13 @@ export default function UserRegistrationForm() {
     setFaceDetectionPaused(true); // Pause detection during verification
     
     // Skip liveness check for uploaded selfies - we're assuming the user is providing a legitimate selfie
+    setBlinked(true);
+    setSmiled(true);
+    setTurnedLeft(true);
+    setTurnedRight(true);
     setLivenessVerified(true);
     setLivenessCheckActive(false);
+    setChallengeText("");
     
     const reader = new FileReader();
     reader.onload = async (ev) => {
@@ -545,11 +585,50 @@ export default function UserRegistrationForm() {
         </h2>
 
         <div className="mx-auto w-80 h-60 relative overflow-hidden rounded-lg border">
-          {/* Display guide overlay if verification is active */}
+          {/* Dynamic oval guide overlay that snaps to face */}
           {faceVerified === null && (
             <div className="absolute inset-0 pointer-events-none">
-              <div className="w-48 h-48 border-2 border-dashed border-yellow-400 rounded-full mx-auto mt-4 opacity-60"></div>
-              <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-32 h-32 border-2 border-yellow-400 rounded-full opacity-60"></div>
+              {/* When face is detected, show a guide oval positioned over the face */}
+              {faceBoundingBox ? (
+                <div 
+                  className={`absolute border-2 border-dashed rounded-full transition-all duration-300`}
+                  style={{
+                    borderColor: livenessCheckActive ? getGuideColor() : "rgba(250, 204, 21, 0.6)",
+                    width: `${Math.max(faceBoundingBox.Width * 180, 120)}px`,
+                    height: `${Math.max(faceBoundingBox.Height * 240, 150)}px`,
+                    left: `${faceBoundingBox.Left * 320}px`,
+                    top: `${faceBoundingBox.Top * 240}px`,
+                    transform: 'translate(-50%, -50%) scale(1.2)',
+                    boxShadow: livenessCheckActive ? `0 0 10px ${getGuideColor()}` : 'none',
+                    opacity: 0.7
+                  }}
+                >
+                  {/* Challenge indicators */}
+                  {liveChallengeStep === 1 && (
+                    <div className="absolute inset-0 flex items-center justify-center">
+                      <div className="w-full h-1 bg-blue-400 animate-pulse"></div>
+                    </div>
+                  )}
+                  {liveChallengeStep === 2 && (
+                    <div className="absolute inset-0 flex items-center justify-center">
+                      <div className="w-8 h-8 rounded-full border-2 border-yellow-400 mx-auto mt-8"></div>
+                    </div>
+                  )}
+                  {liveChallengeStep === 3 && (
+                    <div className="absolute inset-0 flex items-center justify-center">
+                      <div className="text-2xl text-green-500 font-bold animate-pulse">←</div>
+                    </div>
+                  )}
+                  {liveChallengeStep === 4 && (
+                    <div className="absolute inset-0 flex items-center justify-center">
+                      <div className="text-2xl text-purple-500 font-bold animate-pulse">→</div>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                // Default centered oval when no face is detected
+                <div className="w-48 h-48 border-2 border-dashed border-yellow-400 rounded-full mx-auto mt-4 opacity-60"></div>
+              )}
             </div>
           )}
           <video ref={faceVideoRef} autoPlay muted playsInline className="w-full h-full object-cover" />
@@ -560,30 +639,31 @@ export default function UserRegistrationForm() {
         {faceVerified === null && livenessCheckActive && (
           <div className="bg-yellow-50 p-3 rounded-lg border border-yellow-300">
             <h3 className="text-yellow-800 font-medium">Liveness Check</h3>
-            {liveChallengeStep === 1 && (
-              <div className="mt-2">
-                <p className="text-yellow-700 font-medium">Please blink your eyes</p>
-                {blinked ? (
-                  <p className="text-green-600 text-sm">✓ Blink detected! Now please smile.</p>
-                ) : (
-                  <p className="text-yellow-600 text-sm">Looking for eye blink...</p>
-                )}
+            <div className="mt-2">
+              <p className="text-yellow-700 font-medium">{challengeText}</p>
+              
+              {/* Challenge status indicators */}
+              <div className="flex flex-wrap gap-2 justify-center mt-2">
+                <span className={`text-xs px-2 py-1 rounded-full ${blinked ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-500'}`}>
+                  {blinked ? '✓ Blink' : '◯ Blink'}
+                </span>
+                <span className={`text-xs px-2 py-1 rounded-full ${smiled ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-500'}`}>
+                  {smiled ? '✓ Smile' : '◯ Smile'}
+                </span>
+                <span className={`text-xs px-2 py-1 rounded-full ${turnedLeft ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-500'}`}>
+                  {turnedLeft ? '✓ Turn Left' : '◯ Turn Left'}
+                </span>
+                <span className={`text-xs px-2 py-1 rounded-full ${turnedRight ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-500'}`}>
+                  {turnedRight ? '✓ Turn Right' : '◯ Turn Right'}
+                </span>
               </div>
-            )}
-            {liveChallengeStep === 2 && (
-              <div className="mt-2">
-                <p className="text-yellow-700 font-medium">Now please smile</p>
-                {smiled ? (
-                  <p className="text-green-600 text-sm">✓ Smile detected! Liveness verified.</p>
-                ) : (
-                  <p className="text-yellow-600 text-sm">Looking for smile...</p>
-                )}
-              </div>
-            )}
+            </div>
+            
+            {/* Progress bar */}
             <div className="w-full bg-gray-200 rounded-full h-2 mt-2">
               <div 
-                className="bg-yellow-500 h-2 rounded-full" 
-                style={{ width: `${(liveChallengeStep === 1 && !blinked) ? 33 : (liveChallengeStep === 2 && !smiled) ? 66 : 100}%` }}
+                className="bg-yellow-500 h-2 rounded-full transition-all" 
+                style={{ width: `${calculateLivenessProgress()}%` }}
               ></div>
             </div>
           </div>
