@@ -83,20 +83,19 @@ export default function UserRegistrationForm() {
     }
   };
 
-  const blobToDataURL = (blob, context = "Unknown") => {
+  const blobToDataURL = (blob) => {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
       reader.onloadend = () => {
-        const result = reader.result;
-        logToScreen(`[${context}] Blob converted to DataURL successfully. Length: ${result ? result.length : 'N/A'}. Snippet: ${result ? result.substring(0, 100) : 'N/A'}`);
-        resolve(result);
+        logToScreen("Blob converted to DataURL successfully.");
+        resolve(reader.result);
       };
       reader.onerror = (error) => {
-        logToScreen(`[${context}] Error converting blob to DataURL: ` + error, 'error');
+        logToScreen("Error converting blob to DataURL: " + error, 'error');
         reject(error);
       };
       reader.readAsDataURL(blob);
-      logToScreen(`[${context}] Starting blob to DataURL conversion.`);
+      logToScreen("Starting blob to DataURL conversion.");
     });
   };
 
@@ -164,7 +163,7 @@ export default function UserRegistrationForm() {
 
         if (videoBlob.size > 0) {
           try {
-            const videoDataUrl = await blobToDataURL(videoBlob, "Front ID");
+            const videoDataUrl = await blobToDataURL(videoBlob);
             setFrontIdVideoDataUrl(videoDataUrl);
             logToScreen("Front ID video recorded and DataURL set successfully.");
           } catch (error) {
@@ -223,8 +222,7 @@ export default function UserRegistrationForm() {
 
         if (videoBlob.size > 0) {
           try {
-            const videoDataUrl = await blobToDataURL(videoBlob, "Back ID");
-            logToScreen(`Back ID: videoDataUrl generated before set. Length: ${videoDataUrl ? videoDataUrl.length : 'N/A'}. Snippet: ${videoDataUrl ? videoDataUrl.substring(0, 100) : 'N/A'}`);
+            const videoDataUrl = await blobToDataURL(videoBlob);
             setBackIdVideoDataUrl(videoDataUrl);
             logToScreen("Back ID video recorded and DataURL set successfully.");
           } catch (error) {
@@ -859,14 +857,6 @@ export default function UserRegistrationForm() {
       stopCamera();
     };
   }, []);
-
-  useEffect(() => {
-    if (backIdVideoDataUrl) {
-      logToScreen(`[useEffect] backIdVideoDataUrl changed. Length: ${backIdVideoDataUrl.length}. Snippet: ${backIdVideoDataUrl.substring(0, 100)}`);
-    } else {
-      logToScreen(`[useEffect] backIdVideoDataUrl changed to null or empty.`);
-    }
-  }, [backIdVideoDataUrl]);
 
   const renderVerificationStepContent = () => {
     return (
