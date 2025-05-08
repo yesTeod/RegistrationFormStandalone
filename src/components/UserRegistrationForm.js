@@ -129,7 +129,7 @@ export default function UserRegistrationForm() {
       const data = await response.json();
       
       if (response.ok && data.success) {
-        logToScreen("User logged in successfully: " + JSON.stringify(data));
+        logToScreen("[form] User logged in successfully: " + JSON.stringify(data));
         setUserData(data);
         if (data.isAdmin) {
           handleFlip("adminDashboard", "right");
@@ -137,8 +137,7 @@ export default function UserRegistrationForm() {
           handleFlip("loggedIn", "right");
         }
       } else if (data.code === 'EMAIL_NOT_FOUND') {
-        logToScreen("User doesn't exist, continuing with registration");
-        startCamera();
+        logToScreen("[form] User doesn't exist, continuing with registration");
         handleFlip("camera", "right");
       } else if (data.code === 'INCORRECT_PASSWORD') {
         setLoginError("Incorrect password");
@@ -786,11 +785,11 @@ export default function UserRegistrationForm() {
   useEffect(() => {
     if (step === "completed" && photoFront && photoBack && !idDetails && !backIdDetails && !isExtracting) {
       extractIdDetails(photoFront, true).then((frontDetails) => {
-        console.log("Extracted Front ID Details:", frontDetails);
+        logToScreen("[completed] Extracted Front ID Details:" + JSON.stringify(frontDetails));
         setIdDetails(frontDetails);
         
         extractIdDetails(photoBack, true).then((backDetails) => {
-          console.log("Extracted Back ID Details:", backDetails);
+          logToScreen("[completed] Extracted Back ID Details:" + JSON.stringify(backDetails));
           setBackIdDetails(backDetails);
           
           const combined = {};
@@ -818,8 +817,13 @@ export default function UserRegistrationForm() {
   }, [step, photoFront, photoBack, idDetails, backIdDetails, isExtracting]);
 
   useEffect(() => {
+    if (step === "camera") {
+      logToScreen("[useEffect] Step changed to 'camera'. Starting camera for front ID.");
+      startCamera("environment", videoRef);
+    }
     if (step === "cameraBack") {
-      startCamera(); // This will use default 'environment' facing mode and videoRef
+      logToScreen("[useEffect] Step changed to 'cameraBack'. Starting camera for back ID.");
+      startCamera("environment", videoRef);
     }
   }, [step]);
 
