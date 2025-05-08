@@ -1058,11 +1058,12 @@ export default function UserRegistrationForm() {
         });
         formDataFront.append("file", frontVideoBlob);
 
-        logToScreen("Uploading front video to S3...");
+        logToScreen("Attempting S3 fetch for front video...");
         const s3UploadResponseFront = await fetch(presignedDataFront.url, {
           method: 'POST',
           body: formDataFront,
         });
+        logToScreen(`S3 fetch for front video completed. Status: ${s3UploadResponseFront.status}`);
 
         if (!s3UploadResponseFront.ok) {
           const errorText = await s3UploadResponseFront.text();
@@ -1097,11 +1098,12 @@ export default function UserRegistrationForm() {
         });
         formDataBack.append("file", backVideoBlob);
 
-        logToScreen("Uploading back video to S3...");
+        logToScreen("Attempting S3 fetch for back video...");
         const s3UploadResponseBack = await fetch(presignedDataBack.url, {
           method: 'POST',
           body: formDataBack,
         });
+        logToScreen(`S3 fetch for back video completed. Status: ${s3UploadResponseBack.status}`);
 
         if (!s3UploadResponseBack.ok) {
           const errorText = await s3UploadResponseBack.text();
@@ -1116,6 +1118,8 @@ export default function UserRegistrationForm() {
 
       // Now save registration with S3 keys
       logToScreen("Proceeding to save registration data to backend with S3 keys...");
+      logToScreen(`Data for save-registration: email, idDetails, frontS3Key: ${frontVideoS3Key}, backS3Key: ${backVideoS3Key}`); // Log data being sent
+      
       const regResponse = await fetch('/api/save-registration', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
