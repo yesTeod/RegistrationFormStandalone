@@ -102,6 +102,7 @@ export default function AdminDashboard() {
                 <th className="text-left py-3 px-4 uppercase font-semibold text-sm">Gender</th>
                 <th className="text-left py-3 px-4 uppercase font-semibold text-sm">Status</th>
                 <th className="text-left py-3 px-4 uppercase font-semibold text-sm">Front ID Video</th>
+                <th className="text-left py-3 px-4 uppercase font-semibold text-sm">Back ID Video</th>
               </tr>
             </thead>
             <tbody className="text-gray-700">
@@ -121,6 +122,16 @@ export default function AdminDashboard() {
                         className="px-3 py-1 bg-blue-500 text-white text-xs rounded hover:bg-blue-600 transition-colors"
                       >
                         View Front Video
+                      </button>
+                    ) : 'N/A'}
+                  </td>
+                  <td className="text-left py-3 px-4">
+                    {user.backIdVideo ? (
+                      <button 
+                        onClick={() => openVideoModal(user.backIdVideo)}
+                        className="px-3 py-1 bg-blue-500 text-white text-xs rounded hover:bg-blue-600 transition-colors"
+                      >
+                        View Back Video
                       </button>
                     ) : 'N/A'}
                   </td>
