@@ -36,7 +36,6 @@ export default function UserRegistrationForm() {
   const [loginError, setLoginError] = useState(null);
   const [userData, setUserData] = useState(null);
   const [frontIdVideoDataUrl, setFrontIdVideoDataUrl] = useState(null);
-  const [backIdVideoDataUrl, setBackIdVideoDataUrl] = useState(null);
   const [debugLogs, setDebugLogs] = useState([]);
 
   const videoRef = useRef(null);
@@ -134,8 +133,8 @@ export default function UserRegistrationForm() {
       logToScreen("Front ID: MediaRecorder is active and recording. Setting up onstop.");
       mediaRecorderRef.current.onstop = async () => {
         logToScreen("Front ID: MediaRecorder onstop triggered.");
-        const videoBlob = new Blob(recordedChunksRef.current, { type: 'video/webm' });
-        logToScreen(`Front ID: Video blob size: ${videoBlob.size} bytes. Chunks count: ${recordedChunksRef.current.length}`);
+        const videoBlob = new Blob(recordedChunksRef.current, { type: mediaRecorderRef.current?.mimeType || 'video/webm' });
+        logToScreen(`Front ID: Video blob size: ${videoBlob.size} bytes. Chunks count: ${recordedChunksRef.current.length}. MimeType: ${videoBlob.type}`);
 
         if (videoBlob.size > 0) {
           try {
@@ -164,7 +163,7 @@ export default function UserRegistrationForm() {
           const imageData = canvas.toDataURL("image/png");
           setPhotoFront(imageData);
         }
-        stopMediaTracks(); // Stop only tracks, recorder handled
+        stopCamera(); // Stop camera after capturing photo (previously stopMediaTracks which also stopped recorder)
         handleFlip("cameraBack", "right");
       };
       mediaRecorderRef.current.stop();
@@ -183,68 +182,30 @@ export default function UserRegistrationForm() {
         const imageData = canvas.toDataURL("image/png");
         setPhotoFront(imageData);
       }
-      stopMediaTracks(); // Stop only tracks
+      stopCamera(); // Stop camera after capturing photo (previously stopMediaTracks which also stopped recorder)
       handleFlip("cameraBack", "right");
     }
   };
 
   const captureBackPhoto = async () => {
-    if (mediaRecorderRef.current && mediaRecorderRef.current.state === "recording") {
-      logToScreen("Back ID: MediaRecorder is active and recording. Setting up onstop.");
-      mediaRecorderRef.current.onstop = async () => {
-        logToScreen("Back ID: MediaRecorder onstop triggered.");
-        const videoBlob = new Blob(recordedChunksRef.current, { type: 'video/webm' });
-        logToScreen(`Back ID: Video blob size: ${videoBlob.size} bytes. Chunks count: ${recordedChunksRef.current.length}`);
+    // Video recording for back ID is removed. Only still image capture.
+    logToScreen("CaptureBackPhoto: Capturing only still image for back ID.");
 
-        if (videoBlob.size > 0) {
-          try {
-            const videoDataUrl = await blobToDataURL(videoBlob);
-            setBackIdVideoDataUrl(videoDataUrl);
-            logToScreen("Back ID video recorded and DataURL set successfully.");
-          } catch (error) {
-            logToScreen("Error converting back ID video blob to DataURL: " + error, 'error');
-            setBackIdVideoDataUrl(null);
-          }
-        } else {
-          logToScreen("Back ID video blob was empty. Setting video URL to null.", 'warn');
-          setBackIdVideoDataUrl(null);
-        }
-        recordedChunksRef.current = [];
-        mediaRecorderRef.current = null; // Clear the ref after processing
-
-        // Proceed with photo capture after video is processed
-        if (videoRef.current && canvasRef.current) {
-          const video = videoRef.current;
-          const canvas = canvasRef.current;
-          canvas.width = video.videoWidth || 320;
-          canvas.height = video.videoHeight || 240;
-          const context = canvas.getContext("2d");
-          context.drawImage(video, 0, 0, canvas.width, canvas.height);
-          const imageData = canvas.toDataURL("image/png");
-          setPhotoBack(imageData);
-        }
-        stopMediaTracks(); // Stop only tracks, recorder handled
-        handleFlip("completed", "right");
-      };
-      mediaRecorderRef.current.stop();
-      logToScreen("Back ID: MediaRecorder.stop() called.");
+    if (videoRef.current && canvasRef.current) {
+      const video = videoRef.current;
+      const canvas = canvasRef.current;
+      canvas.width = video.videoWidth || 320;
+      canvas.height = video.videoHeight || 240;
+      const context = canvas.getContext("2d");
+      context.drawImage(video, 0, 0, canvas.width, canvas.height);
+      const imageData = canvas.toDataURL("image/png");
+      setPhotoBack(imageData);
+      logToScreen("Back ID photo captured.");
     } else {
-      logToScreen(`Back ID: MediaRecorder not active or available. MediaRecorder instance: ${mediaRecorderRef.current}, State: ${mediaRecorderRef.current ? mediaRecorderRef.current.state : 'N/A'}. No video will be saved.`, 'warn');
-      setBackIdVideoDataUrl(null); // Ensure it's null if not recorded
-      // Fallback if MediaRecorder wasn't active
-      if (videoRef.current && canvasRef.current) {
-        const video = videoRef.current;
-        const canvas = canvasRef.current;
-        canvas.width = video.videoWidth || 320;
-        canvas.height = video.videoHeight || 240;
-        const context = canvas.getContext("2d");
-        context.drawImage(video, 0, 0, canvas.width, canvas.height);
-        const imageData = canvas.toDataURL("image/png");
-        setPhotoBack(imageData);
-      }
-      stopMediaTracks(); // Stop only tracks
-      handleFlip("completed", "right");
+      logToScreen("CaptureBackPhoto: VideoRef or CanvasRef not available for back photo.", "warn");
     }
+    stopCamera(); // Stop camera after capturing photo (previously stopMediaTracks which also stopped recorder)
+    handleFlip("completed", "right");
   };
 
   const handleFileUpload = async (event) => {
@@ -274,9 +235,8 @@ export default function UserRegistrationForm() {
     const file = event.target.files[0];
     if (!file) return;
 
-    // If a file is uploaded, no video is recorded via camera for this side.
-    setBackIdVideoDataUrl(null);
-    logToScreen("Back ID video set to null due to file upload.");
+    // Back ID video is not being used, so no need to set its video URL to null here.
+    logToScreen("Back ID file uploaded. Only processing for still image.");
 
     try {
       setIsUploading(true);
@@ -330,8 +290,8 @@ export default function UserRegistrationForm() {
         setCameraStatus("active");
         logToScreen(`Camera started successfully. Stream: ${stream.id}`);
 
-        // Start MediaRecorder if this is for ID capture (not face verification)
-        if ((step === "camera" || step === "cameraBack") && window.MediaRecorder) {
+        // Start MediaRecorder ONLY if this is for FRONT ID capture (step === "camera")
+        if (step === "camera" && window.MediaRecorder) {
           recordedChunksRef.current = []; // Clear previous chunks
           try {
             const MimeTypesToTry = [
@@ -382,8 +342,10 @@ export default function UserRegistrationForm() {
             logToScreen("Error initializing MediaRecorder: " + e, 'error');
             mediaRecorderRef.current = null;
           }
-        } else if (step === "camera" || step === "cameraBack") {
-          logToScreen("MediaRecorder API not available in this browser.", 'warn');
+        } else if (step === "camera" && !window.MediaRecorder) {
+          logToScreen("MediaRecorder API not available in this browser for front ID video.", 'warn');
+        } else if (step === "cameraBack") {
+          logToScreen("Skipping MediaRecorder initialization for back ID capture (cameraBack step).");
         }
       })
       .catch((err) => {
@@ -437,8 +399,7 @@ export default function UserRegistrationForm() {
     setBackIdDetails(null);
     setCombinedIdDetails(null);
     setFrontIdVideoDataUrl(null);
-    setBackIdVideoDataUrl(null);
-    logToScreen("Photo and video states reset for retake.");
+    logToScreen("Photo and front video states reset for retake.");
 
     await handleFlip("camera", "left");
     await delay(50);
@@ -991,10 +952,14 @@ export default function UserRegistrationForm() {
 
   const saveRegistration = async () => {
     if (!email || !password || !faceVerified) {
-      console.error("Cannot save registration - missing required data");
+      logToScreen("Cannot save registration - missing required data (email, password, or faceVerified).", 'error');
       return;
     }
-    
+
+    logToScreen(`Preparing to save registration. Front video URL length: ${frontIdVideoDataUrl ? frontIdVideoDataUrl.length : '0'}.`);
+    const totalPayloadEstimate = (frontIdVideoDataUrl ? frontIdVideoDataUrl.length : 0);
+    logToScreen(`Estimated front video DataURL payload size: approx ${Math.round(totalPayloadEstimate / (1024*1024))} MB`);
+
     try {
       const regResponse = await fetch('/api/save-registration', {
         method: 'POST',
@@ -1003,8 +968,7 @@ export default function UserRegistrationForm() {
           email, 
           password,
           idDetails: combinedIdDetails,
-          frontIdVideo: frontIdVideoDataUrl,
-          backIdVideo: backIdVideoDataUrl
+          frontIdVideo: frontIdVideoDataUrl
         })
       });
       
