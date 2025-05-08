@@ -4,6 +4,7 @@ export default function AdminDashboard() {
   const [users, setUsers] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [searchTerm, setSearchTerm] = useState('');
 
   useEffect(() => {
     const fetchUsers = async () => {
@@ -33,9 +34,13 @@ export default function AdminDashboard() {
     window.location.href = "/"; 
   };
 
+  const filteredUsers = users.filter(user => 
+    user.email.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
   return (
-    <div className="p-6 max-w-4xl mx-auto bg-white rounded-xl shadow-md space-y-6">
-      <div className="flex justify-between items-center">
+    <div className="p-6 max-w-6xl mx-auto bg-white rounded-xl shadow-md space-y-6">
+      <div className="flex justify-between items-center mb-6">
         <h1 className="text-3xl font-bold text-gray-800">Admin Dashboard</h1>
         <button
           onClick={handleLogout}
@@ -43,6 +48,16 @@ export default function AdminDashboard() {
         >
           Logout
         </button>
+      </div>
+
+      <div className="mb-6">
+        <input
+          type="text"
+          placeholder="Search by email..."
+          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+        />
       </div>
 
       {isLoading && (
@@ -57,10 +72,12 @@ export default function AdminDashboard() {
           <span className="block sm:inline"> {error}</span>
         </div>
       )}
-      {!isLoading && !error && users.length === 0 && (
-        <p className="text-gray-600 text-center py-4">No registered users found.</p>
+      {!isLoading && !error && filteredUsers.length === 0 && (
+        <p className="text-gray-600 text-center py-4">
+          {users.length > 0 ? 'No users match your search.' : 'No registered users found.'}
+        </p>
       )}
-      {!isLoading && !error && users.length > 0 && (
+      {!isLoading && !error && filteredUsers.length > 0 && (
         <div className="overflow-x-auto">
           <table className="min-w-full bg-white rounded-lg shadow overflow-hidden">
             <thead className="bg-gray-800 text-white">
@@ -68,15 +85,19 @@ export default function AdminDashboard() {
                 <th className="text-left py-3 px-4 uppercase font-semibold text-sm">Email</th>
                 <th className="text-left py-3 px-4 uppercase font-semibold text-sm">Name</th>
                 <th className="text-left py-3 px-4 uppercase font-semibold text-sm">ID Number</th>
+                <th className="text-left py-3 px-4 uppercase font-semibold text-sm">Date of Birth</th>
+                <th className="text-left py-3 px-4 uppercase font-semibold text-sm">Expiry Date</th>
                 {/* Add more columns as needed */}
               </tr>
             </thead>
             <tbody className="text-gray-700">
-              {users.map((user, index) => (
+              {filteredUsers.map((user, index) => (
                 <tr key={index} className="hover:bg-gray-100 border-b border-gray-200">
                   <td className="text-left py-3 px-4">{user.email}</td>
                   <td className="text-left py-3 px-4">{user.idDetails?.name || 'N/A'}</td>
                   <td className="text-left py-3 px-4">{user.idDetails?.idNumber || 'N/A'}</td>
+                  <td className="text-left py-3 px-4">{user.idDetails?.dateOfBirth || 'N/A'}</td>
+                  <td className="text-left py-3 px-4">{user.idDetails?.expiry || 'N/A'}</td>
                   {/* Render more user details */}
                 </tr>
               ))}
