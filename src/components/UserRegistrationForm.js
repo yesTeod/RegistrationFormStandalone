@@ -786,6 +786,7 @@ export default function UserRegistrationForm() {
       
       if (response.ok && data.success) {
         console.log("Registration saved successfully");
+        setUserData(data);
         handleFlip("success", "right");
       } else if (data.code === 'USER_EXISTS') {
         alert("This email is already registered. Please log in instead.");
