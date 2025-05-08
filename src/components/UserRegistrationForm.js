@@ -1144,15 +1144,48 @@ export default function UserRegistrationForm() {
               <h3 className="text-lg font-medium text-gray-800 mb-2">Your Details</h3>
               <div className="text-sm text-left space-y-1">
                 <p><span className="font-medium">Email:</span> {userData.email}</p>
-                {userData.name && <p><span className="font-medium">Name:</span> {userData.name} {userData.fatherName && userData.fatherName !== "Not found" ? userData.fatherName : ""}</p>}
-                {userData.idNumber && userData.idNumber !== "Not found" && <p><span className="font-medium">ID Number:</span> {userData.idNumber}</p>}
-                {userData.dateOfBirth && userData.dateOfBirth !== "Not found" && <p><span className="font-medium">Date of Birth:</span> {userData.dateOfBirth}</p>}
-                {userData.expiry && userData.expiry !== "Not found" && <p><span className="font-medium">Expiry Date:</span> {userData.expiry}</p>}
-                {userData.placeOfBirth && userData.placeOfBirth !== "Not found" && <p><span className="font-medium">Place of Birth:</span> {userData.placeOfBirth}</p>}
-                {userData.nationality && userData.nationality !== "Not found" && <p><span className="font-medium">Nationality:</span> {userData.nationality}</p>}
-                {userData.gender && userData.gender !== "Not found" && <p><span className="font-medium">Gender:</span> {userData.gender}</p>}
-                {userData.issueDate && userData.issueDate !== "Not found" && <p><span className="font-medium">Issue Date:</span> {userData.issueDate}</p>}
-                {userData.address && <p><span className="font-medium">Address:</span> {userData.address}</p>}
+                
+                {userData.idDetails && (
+                  <>
+                    {/* Name and Father's Name from idDetails */}
+                    {userData.idDetails.name && userData.idDetails.name !== "Not found" &&
+                      <p>
+                        <span className="font-medium">Name:</span>
+                        {` ${userData.idDetails.name}`}
+                        {userData.idDetails.fatherName && userData.idDetails.fatherName !== "Not found" ? ` ${userData.idDetails.fatherName}` : ""}
+                      </p>
+                    }
+
+                    {/* ID Number from idDetails */}
+                    {userData.idDetails.idNumber && userData.idDetails.idNumber !== "Not found" &&
+                      <p><span className="font-medium">ID Number:</span> {userData.idDetails.idNumber}</p>}
+
+                    {/* Date of Birth from idDetails */}
+                    {userData.idDetails.dateOfBirth && userData.idDetails.dateOfBirth !== "Not found" &&
+                      <p><span className="font-medium">Date of Birth:</span> {userData.idDetails.dateOfBirth}</p>}
+
+                    {/* Expiry Date from idDetails */}
+                    {userData.idDetails.expiry && userData.idDetails.expiry !== "Not found" &&
+                      <p><span className="font-medium">Expiry Date:</span> {userData.idDetails.expiry}</p>}
+
+                    {/* Place of Birth from idDetails */}
+                    {userData.idDetails.placeOfBirth && userData.idDetails.placeOfBirth !== "Not found" &&
+                      <p><span className="font-medium">Place of Birth:</span> {userData.idDetails.placeOfBirth}</p>}
+
+                    {/* Nationality from idDetails */}
+                    {userData.idDetails.nationality && userData.idDetails.nationality !== "Not found" &&
+                      <p><span className="font-medium">Nationality:</span> {userData.idDetails.nationality}</p>}
+
+                    {/* Gender from idDetails */}
+                    {userData.idDetails.gender && userData.idDetails.gender !== "Not found" &&
+                      <p><span className="font-medium">Gender:</span> {userData.idDetails.gender}</p>}
+
+                    {/* Issue Date from idDetails */}
+                    {userData.idDetails.issueDate && userData.idDetails.issueDate !== "Not found" &&
+                      <p><span className="font-medium">Issue Date:</span> {userData.idDetails.issueDate}</p>}
+                  </>
+                )}
+                
                 <p><span className="font-medium">Status:</span> {userData.status || "Verified"}</p>
               </div>
             </div>
