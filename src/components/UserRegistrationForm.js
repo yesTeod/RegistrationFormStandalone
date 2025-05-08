@@ -1147,8 +1147,14 @@ export default function UserRegistrationForm() {
               <h3 className="text-lg font-medium text-gray-800 mb-2">Your Details</h3>
               <div className="text-sm text-left space-y-1">
                 <p><span className="font-medium">Email:</span> {userData.email}</p>
-                {userData.name && <p><span className="font-medium">Name:</span> {userData.name}</p>}
-                {userData.dateOfBirth && <p><span className="font-medium">Date of Birth:</span> {userData.dateOfBirth}</p>}
+                {userData.name && <p><span className="font-medium">Name:</span> {userData.name} {userData.fatherName && userData.fatherName !== "Not found" ? userData.fatherName : ""}</p>}
+                {userData.idNumber && userData.idNumber !== "Not found" && <p><span className="font-medium">ID Number:</span> {userData.idNumber}</p>}
+                {userData.dateOfBirth && userData.dateOfBirth !== "Not found" && <p><span className="font-medium">Date of Birth:</span> {userData.dateOfBirth}</p>}
+                {userData.expiry && userData.expiry !== "Not found" && <p><span className="font-medium">Expiry Date:</span> {userData.expiry}</p>}
+                {userData.placeOfBirth && userData.placeOfBirth !== "Not found" && <p><span className="font-medium">Place of Birth:</span> {userData.placeOfBirth}</p>}
+                {userData.nationality && userData.nationality !== "Not found" && <p><span className="font-medium">Nationality:</span> {userData.nationality}</p>}
+                {userData.gender && userData.gender !== "Not found" && <p><span className="font-medium">Gender:</span> {userData.gender}</p>}
+                {userData.issueDate && userData.issueDate !== "Not found" && <p><span className="font-medium">Issue Date:</span> {userData.issueDate}</p>}
                 {userData.address && <p><span className="font-medium">Address:</span> {userData.address}</p>}
                 <p><span className="font-medium">Status:</span> {userData.status || "Verified"}</p>
               </div>
@@ -1159,7 +1165,7 @@ export default function UserRegistrationForm() {
             onClick={() => window.location.href = "/dashboard"}
             className="px-8 py-3 bg-green-600 hover:bg-green-700 text-white rounded-lg shadow-md"
           >
-            Go to Dashboard
+            Go to Login
           </button>
         </div>
       )}
