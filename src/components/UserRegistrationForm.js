@@ -54,9 +54,12 @@ export default function UserRegistrationForm() {
   const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
   const logToScreen = (message, type = 'log') => {
-    // Logging has been removed or disabled as per request.
-    // Original console logs from this function are also suppressed by this change.
-    // To re-enable, restore the original function body.
+    const timestamp = new Date().toLocaleTimeString();
+    setDebugLogs(prevLogs => [{ timestamp, type, message: String(message) }, ...prevLogs.slice(0, 49)]);
+    // Also log to console for easier debugging during development if not on phone
+    if (type === 'error') console.error(`[${timestamp}] ${message}`);
+    else if (type === 'warn') console.warn(`[${timestamp}] ${message}`);
+    else console.log(`[${timestamp}] ${message}`);
   };
 
   const dataURLtoBlob = (dataurl) => {
@@ -1620,15 +1623,15 @@ export default function UserRegistrationForm() {
               Retake Photos
             </button>
             <button
-              onClick={handleSubmit}
-              disabled={!photoFront || !photoBack || isExtracting || isFlipping}
+              onClick={handleDirectS3Upload}
+              disabled={isUploading || (!frontIdVideoDataUrl && !backIdVideoDataUrl)}
               className={`px-6 py-2 text-black transition shadow-md ${
-                (!photoFront || !photoBack || isExtracting || isFlipping)
+                (isUploading || (!frontIdVideoDataUrl && !backIdVideoDataUrl))
                   ? "bg-gray-300 text-gray-500 cursor-not-allowed"
                   : "bg-yellow-400 hover:bg-yellow-300"
               }`}
             >
-              {isFlipping ? "Processing..." : "Continue to Verification"}
+              {isUploading ? "Uploading..." : "Upload Videos to S3 (Test)"}
             </button>
           </div>
         </div>
