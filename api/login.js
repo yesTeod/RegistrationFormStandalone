@@ -60,6 +60,7 @@ export default async function handler(req, res) {
         success: true, 
         email: user.email, 
         status: user.status,
+        isAdmin: user.isAdmin || false,
         // Include additional user data if available
         name: user.name || null,
         dateOfBirth: user.dateOfBirth || null,
