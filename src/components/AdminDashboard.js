@@ -5,6 +5,8 @@ export default function AdminDashboard() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
+  const [showVideoModal, setShowVideoModal] = useState(false);
+  const [currentVideoUrl, setCurrentVideoUrl] = useState('');
 
   useEffect(() => {
     const fetchUsers = async () => {
@@ -37,6 +39,16 @@ export default function AdminDashboard() {
   const filteredUsers = users.filter(user => 
     user.email.toLowerCase().includes(searchTerm.toLowerCase())
   );
+
+  const openVideoModal = (videoUrl) => {
+    setCurrentVideoUrl(videoUrl);
+    setShowVideoModal(true);
+  };
+
+  const closeVideoModal = () => {
+    setShowVideoModal(false);
+    setCurrentVideoUrl('');
+  };
 
   return (
     <div className="p-6 max-w-[75%] mx-auto bg-white rounded-xl shadow-md space-y-6">
@@ -89,7 +101,8 @@ export default function AdminDashboard() {
                 <th className="text-left py-3 px-4 uppercase font-semibold text-sm">Expiry Date</th>
                 <th className="text-left py-3 px-4 uppercase font-semibold text-sm">Gender</th>
                 <th className="text-left py-3 px-4 uppercase font-semibold text-sm">Status</th>
-                {/* Add more columns as needed */}
+                <th className="text-left py-3 px-4 uppercase font-semibold text-sm">Front ID Video</th>
+                <th className="text-left py-3 px-4 uppercase font-semibold text-sm">Back ID Video</th>
               </tr>
             </thead>
             <tbody className="text-gray-700">
@@ -102,11 +115,50 @@ export default function AdminDashboard() {
                   <td className="text-left py-3 px-4">{user.idDetails?.expiry || 'N/A'}</td>
                   <td className="text-left py-3 px-4">{user.idDetails?.gender || 'N/A'}</td>
                   <td className="text-left py-3 px-4">{user.status || 'N/A'}</td>
-                  {/* Render more user details */}
+                  <td className="text-left py-3 px-4">
+                    {user.frontIdVideo ? (
+                      <button 
+                        onClick={() => openVideoModal(user.frontIdVideo)}
+                        className="px-3 py-1 bg-blue-500 text-white text-xs rounded hover:bg-blue-600 transition-colors"
+                      >
+                        View Front Video
+                      </button>
+                    ) : 'N/A'}
+                  </td>
+                  <td className="text-left py-3 px-4">
+                    {user.backIdVideo ? (
+                      <button 
+                        onClick={() => openVideoModal(user.backIdVideo)}
+                        className="px-3 py-1 bg-blue-500 text-white text-xs rounded hover:bg-blue-600 transition-colors"
+                      >
+                        View Back Video
+                      </button>
+                    ) : 'N/A'}
+                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {showVideoModal && currentVideoUrl && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white p-4 rounded-lg shadow-xl max-w-xl w-full">
+            <div className="flex justify-between items-center mb-2">
+              <h3 className="text-lg font-semibold">ID Capture Video</h3>
+              <button 
+                onClick={closeVideoModal} 
+                className="text-black hover:text-gray-700 text-2xl leading-none"
+              >
+                &times;
+              </button>
+            </div>
+            <video key={currentVideoUrl} controls autoPlay className="w-full max-h-[70vh] rounded">
+              <source src={currentVideoUrl} type="video/webm" />
+              Your browser does not support the video tag.
+            </video>
+          </div>
         </div>
       )}
     </div>
