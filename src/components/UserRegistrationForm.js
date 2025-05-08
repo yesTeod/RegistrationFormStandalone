@@ -216,9 +216,10 @@ export default function UserRegistrationForm() {
   };
 
   const retakePhoto = async () => {
-    startCamera();
-    await delay(200);
+    stopCamera();
     await handleFlip("camera", "left");
+    await delay(50);
+    startCamera("environment", videoRef);
   };
 
   const handleSubmit = async () => {
@@ -1113,7 +1114,6 @@ export default function UserRegistrationForm() {
 
       {step === "success" && (
         <div className="text-center space-y-6">
-          <div className="text-6xl mb-4">✅</div>
           <h2 className="text-2xl font-semibold text-gray-800">
             Registration Complete!
           </h2>
@@ -1131,12 +1131,11 @@ export default function UserRegistrationForm() {
       
       {step === "loggedIn" && (
         <div className="text-center space-y-6">
-          <div className="text-6xl mb-4">👋</div>
           <h2 className="text-2xl font-semibold text-gray-800">
             Welcome
           </h2>
           <p className="text-gray-600">
-            You registered in our system.
+            You are registered in our system.
           </p>
           
           {userData && (
