@@ -60,6 +60,8 @@ export default async function handler(req, res) {
       userDetails.documentCountry = userDetails.documentCountry || null;
       userDetails.lastUpdated = userDetails.lastUpdated || null;
       userDetails.createdAt = userDetails.createdAt || null;
+      userDetails.frontIdVideo = userDetails.frontIdVideo || null;
+      userDetails.backIdVideo = userDetails.backIdVideo || null;
       
       return res.status(200).json(userDetails);
     } else {
