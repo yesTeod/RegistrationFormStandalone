@@ -1168,10 +1168,6 @@ export default function UserRegistrationForm() {
                     {userData.idDetails.expiry && userData.idDetails.expiry !== "Not found" &&
                       <p><span className="font-medium">Expiry Date:</span> {userData.idDetails.expiry}</p>}
 
-                    {/* Place of Birth from idDetails */}
-                    {userData.idDetails.placeOfBirth && userData.idDetails.placeOfBirth !== "Not found" &&
-                      <p><span className="font-medium">Place of Birth:</span> {userData.idDetails.placeOfBirth}</p>}
-
                     {/* Nationality from idDetails */}
                     {userData.idDetails.nationality && userData.idDetails.nationality !== "Not found" &&
                       <p><span className="font-medium">Nationality:</span> {userData.idDetails.nationality}</p>}
