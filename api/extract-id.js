@@ -80,9 +80,11 @@ export default async function handler(request) {
       console.log("Extracted Form Fields:", formFields);
       
       // Extract key-value pairs directly for ID fields
+      const extractedNameDetailsFromText = extractNameFromText(processedText);
+
       const nameDetails = {
-        name: findValueByKey(formFields, ["name", "given name", "first name"]) || extractNameFromText(processedText),
-        fatherName: findValueByKey(formFields, ["father's name", "surname", "last name", "family name"]) || "Not found"
+        name: findValueByKey(formFields, ["name", "given name", "first name"]) || extractedNameDetailsFromText.name,
+        fatherName: findValueByKey(formFields, ["father's name", "surname", "last name", "family name"]) || extractedNameDetailsFromText.fatherName || "Not found"
       };
       
       const dateOfBirth = findValueByKey(formFields, ["date of birth", "dob", "birth date"]) || extractDateOfBirth(processedText);
@@ -104,8 +106,6 @@ export default async function handler(request) {
         placeOfBirth,
         nationality,
         gender,
-        address,
-        issuingAuthority,
         issueDate
       };
       
@@ -129,8 +129,6 @@ export default async function handler(request) {
           placeOfBirth: "Not found",
           nationality: "Not found",
           gender: "Not found",
-          address: "Not found",
-          issuingAuthority: "Not found",
           issueDate: "Not found"
         }),
         { status: 200, headers: { 'Content-Type': 'application/json' } }
@@ -149,8 +147,6 @@ export default async function handler(request) {
         placeOfBirth: "Not found",
         nationality: "Not found",
         gender: "Not found",
-        address: "Not found",
-        issuingAuthority: "Not found",
         issueDate: "Not found"
       }),
       { status: 200, headers: { 'Content-Type': 'application/json' } }
@@ -274,6 +270,9 @@ function extractNameFromText(text) {
   // --- If the English labels weren't found, try to use Bulgarian labels ---
   // For the given name, Bulgarian may use "Име" (or even OCR mis-read as "ViMe")
   // For the father's name, Bulgarian may have "Презиме"
+  // This logic is ineffective if englishOnly=true, as Cyrillic chars would be removed.
+  // Keeping it commented out for now, but can be removed if englishOnly is always true.
+  /*
   if (data.name === "Not found") {
     for (let i = 0; i < lines.length; i++) {
       const lowerLine = lines[i].toLowerCase();
@@ -290,6 +289,7 @@ function extractNameFromText(text) {
       }
     }
   }
+  */
 
   // Check for patterns like "Name: John Doe" on the same line
   const namePattern = /name[\s:]+(.*)/i;
