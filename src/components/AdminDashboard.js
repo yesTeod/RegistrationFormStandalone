@@ -10,19 +10,12 @@ export default function AdminDashboard() {
       setIsLoading(true);
       setError(null);
       try {
-        // TODO: Implement API call to /api/admin/users
-        // For now, simulate a delay and set mock data
-        await new Promise(resolve => setTimeout(resolve, 1000)); 
-        // const response = await fetch('/api/admin/users');
-        // if (!response.ok) {
-        //   throw new Error('Failed to fetch users');
-        // }
-        // const data = await response.json();
-        // setUsers(data.users || []);
-        setUsers([
-          { email: 'user1@example.com', idDetails: { name: 'John Doe', idNumber: '12345' } },
-          { email: 'user2@example.com', idDetails: { name: 'Jane Smith', idNumber: '67890' } },
-        ]); // Mock data
+        const response = await fetch('/api/admin/users');
+        if (!response.ok) {
+          throw new Error('Failed to fetch users');
+        }
+        const data = await response.json();
+        setUsers(data.users || []);
       } catch (err) {
         setError(err.message);
         setUsers([]);
