@@ -772,7 +772,7 @@ export default function UserRegistrationForm() {
     }
     
     try {
-      const response = await fetch('/api/save-registration', {
+      const regResponse = await fetch('/api/save-registration', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
@@ -782,17 +782,40 @@ export default function UserRegistrationForm() {
         })
       });
       
-      const data = await response.json();
+      const regData = await regResponse.json();
       
-      if (response.ok && data.success) {
-        console.log("Registration saved successfully");
-        setUserData(data);
-        handleFlip("success", "right");
-      } else if (data.code === 'USER_EXISTS') {
+      if (regResponse.ok && regData.success) {
+        console.log("Registration saved successfully. Now attempting to log in.");
+        
+        // Attempt to login the user automatically
+        try {
+          const loginResponse = await fetch('/api/login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email, password })
+          });
+          const loginData = await loginResponse.json();
+
+          if (loginResponse.ok && loginData.success) {
+            console.log("Auto-login after registration successful:", loginData);
+            setUserData(loginData); // Use login data to set the user session
+            handleFlip("success", "right");
+          } else {
+            console.error("Auto-login after registration failed:", loginData.error || "Unknown error");
+            alert("Registration was successful, but auto-login failed. Please try logging in manually.");
+            handleFlip("success", "right"); // Proceed to success, but user won't be logged in
+          }
+        } catch (loginError) {
+          console.error("Error during auto-login after registration:", loginError);
+          alert("Registration was successful, but an error occurred during auto-login. Please try logging in manually.");
+          handleFlip("success", "right"); // Proceed to success, but user won't be logged in
+        }
+
+      } else if (regData.code === 'USER_EXISTS') {
         alert("This email is already registered. Please log in instead.");
         handleFlip("form", "left");
       } else {
-        alert("Error saving registration: " + (data.error || "Unknown error"));
+        alert("Error saving registration: " + (regData.error || "Unknown error"));
       }
     } catch (error) {
       console.error("Error saving registration:", error);
