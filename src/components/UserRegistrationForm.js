@@ -799,16 +799,16 @@ export default function UserRegistrationForm() {
           if (loginResponse.ok && loginData.success) {
             console.log("Auto-login after registration successful:", loginData);
             setUserData(loginData); // Use login data to set the user session
-            handleFlip("success", "right");
+            handleFlip("loggedIn", "right"); // Go to the loggedIn step (dashboard)
           } else {
             console.error("Auto-login after registration failed:", loginData.error || "Unknown error");
             alert("Registration was successful, but auto-login failed. Please try logging in manually.");
-            handleFlip("success", "right"); // Proceed to success, but user won't be logged in
+            handleFlip("form", "left"); // Go back to form if auto-login fails
           }
         } catch (loginError) {
           console.error("Error during auto-login after registration:", loginError);
           alert("Registration was successful, but an error occurred during auto-login. Please try logging in manually.");
-          handleFlip("success", "right"); // Proceed to success, but user won't be logged in
+          handleFlip("form", "left"); // Go back to form if auto-login fails
         }
 
       } else if (regData.code === 'USER_EXISTS') {
