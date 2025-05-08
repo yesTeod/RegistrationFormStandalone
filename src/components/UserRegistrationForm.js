@@ -42,7 +42,6 @@ export default function UserRegistrationForm() {
   const containerRef = useRef(null);
   const streamRef = useRef(null);
   const fileInputRef = useRef(null);
-  const selfieInputRef = useRef(null);
   const lastDetectionTime = useRef(0);
   const lastLivenessCheckTime = useRef(0);
 
@@ -459,58 +458,6 @@ export default function UserRegistrationForm() {
     }
   };
 
-  const handleSelfieUpload = (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    setVerifying(true);
-    setShowRetryOptions(false);
-    setFaceDetectionPaused(true);
-    
-    setBlinked(true);
-    setTurnedLeft(true);
-    setTurnedRight(true);
-    setLivenessVerified(true);
-    setLivenessCheckActive(false);
-    setChallengeText("");
-    
-    const reader = new FileReader();
-    reader.onload = async (ev) => {
-      const dataURL = ev.target.result;
-      try {
-        const res = await fetch("/api/verify-face", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ idImage: photoFront, selfie: dataURL }),
-        });
-        
-        if (!res.ok) {
-          const errorData = await res.json().catch(() => ({ error: 'Unknown error' }));
-          console.error("Face verification failed:", res.status, errorData);
-          setFaceVerified(false);
-          setVerificationAttempts(prev => prev + 1);
-          setShowRetryOptions(true);
-          return;
-        }
-        
-        const data = await res.json();
-        setFaceVerified(data.match);
-        
-        if (!data.match) {
-          setVerificationAttempts(prev => prev + 1);
-          setShowRetryOptions(true);
-        }
-      } catch (err) {
-        console.error("Face verification error:", err);
-        setFaceVerified(false);
-        setVerificationAttempts(prev => prev + 1);
-        setShowRetryOptions(true);
-      } finally {
-        setVerifying(false);
-      }
-    };
-    reader.readAsDataURL(file);
-  };
-
   const handleVerificationComplete = () => {
     if (faceVerified) {
       // Save the registration with ID details
@@ -618,6 +565,12 @@ export default function UserRegistrationForm() {
       });
     }
   }, [step, photoFront, photoBack, idDetails, backIdDetails, isExtracting]);
+
+  useEffect(() => {
+    if (step === "cameraBack") {
+      startCamera(); // This will use default 'environment' facing mode and videoRef
+    }
+  }, [step]);
 
   useEffect(() => {
     const card = containerRef.current;
@@ -806,25 +759,8 @@ export default function UserRegistrationForm() {
             >
               {verifying ? 'Verifying...' : livenessCheckActive ? 'Performing Liveness Check...' : livenessVerified ? 'Verify Face' : 'Start Verification'}
             </button>
-            <button
-              onClick={() => selfieInputRef.current.click()}
-              disabled={verifying || livenessCheckActive}
-              className={`px-4 py-2 bg-blue-500 hover:bg-blue-400 text-white rounded-full ${
-                verifying || livenessCheckActive ? 'opacity-50 cursor-not-allowed' : ''
-              }`}
-            >
-              {verifying ? 'Uploading...' : 'Upload Selfie'}
-            </button>
           </div>
         )}
-
-        <input
-          type="file"
-          accept="image/*"
-          ref={selfieInputRef}
-          onChange={handleSelfieUpload}
-          className="hidden"
-        />
       </div>
     );
   };
