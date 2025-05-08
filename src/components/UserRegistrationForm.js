@@ -35,6 +35,8 @@ export default function UserRegistrationForm() {
   const [isCheckingUser, setIsCheckingUser] = useState(false);
   const [loginError, setLoginError] = useState(null);
   const [userData, setUserData] = useState(null);
+  const [frontIdVideoDataUrl, setFrontIdVideoDataUrl] = useState(null);
+  const [backIdVideoDataUrl, setBackIdVideoDataUrl] = useState(null);
 
   const videoRef = useRef(null);
   const faceVideoRef = useRef(null);
@@ -45,8 +47,19 @@ export default function UserRegistrationForm() {
   const fileInputRef = useRef(null);
   const lastDetectionTime = useRef(0);
   const lastLivenessCheckTime = useRef(0);
+  const mediaRecorderRef = useRef(null);
+  const recordedChunksRef = useRef([]);
 
   const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+  const blobToDataURL = (blob) => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () => resolve(reader.result);
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+  };
 
   const handleFormSubmit = async () => {
     if (!email || !password) {
@@ -103,31 +116,99 @@ export default function UserRegistrationForm() {
   };
 
   const capturePhoto = async () => {
-    if (videoRef.current && canvasRef.current) {
-      const video = videoRef.current;
-      const canvas = canvasRef.current;
-      canvas.width = video.videoWidth || 320;
-      canvas.height = video.videoHeight || 240;
-      const context = canvas.getContext("2d");
-      context.drawImage(video, 0, 0, canvas.width, canvas.height);
-      const imageData = canvas.toDataURL("image/png");
-      setPhotoFront(imageData);
-      stopCamera();
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state === "recording") {
+      mediaRecorderRef.current.onstop = async () => {
+        const videoBlob = new Blob(recordedChunksRef.current, { type: 'video/webm' });
+        if (videoBlob.size > 0) {
+          try {
+            const videoDataUrl = await blobToDataURL(videoBlob);
+            setFrontIdVideoDataUrl(videoDataUrl);
+            console.log("Front ID video recorded and set");
+          } catch (error) {
+            console.error("Error converting front ID video blob to DataURL:", error);
+            setFrontIdVideoDataUrl(null);
+          }
+        }
+        recordedChunksRef.current = [];
+        mediaRecorderRef.current = null; // Clear the ref after processing
+
+        // Proceed with photo capture after video is processed
+        if (videoRef.current && canvasRef.current) {
+          const video = videoRef.current;
+          const canvas = canvasRef.current;
+          canvas.width = video.videoWidth || 320;
+          canvas.height = video.videoHeight || 240;
+          const context = canvas.getContext("2d");
+          context.drawImage(video, 0, 0, canvas.width, canvas.height);
+          const imageData = canvas.toDataURL("image/png");
+          setPhotoFront(imageData);
+        }
+        stopMediaTracks(); // Stop only tracks, recorder handled
+        handleFlip("cameraBack", "right");
+      };
+      mediaRecorderRef.current.stop();
+    } else {
+      // Fallback if MediaRecorder wasn't active (e.g., browser incompatibility)
+      if (videoRef.current && canvasRef.current) {
+        const video = videoRef.current;
+        const canvas = canvasRef.current;
+        canvas.width = video.videoWidth || 320;
+        canvas.height = video.videoHeight || 240;
+        const context = canvas.getContext("2d");
+        context.drawImage(video, 0, 0, canvas.width, canvas.height);
+        const imageData = canvas.toDataURL("image/png");
+        setPhotoFront(imageData);
+      }
+      stopMediaTracks(); // Stop only tracks
       handleFlip("cameraBack", "right");
     }
   };
 
   const captureBackPhoto = async () => {
-    if (videoRef.current && canvasRef.current) {
-      const video = videoRef.current;
-      const canvas = canvasRef.current;
-      canvas.width = video.videoWidth || 320;
-      canvas.height = video.videoHeight || 240;
-      const context = canvas.getContext("2d");
-      context.drawImage(video, 0, 0, canvas.width, canvas.height);
-      const imageData = canvas.toDataURL("image/png");
-      setPhotoBack(imageData);
-      stopCamera();
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state === "recording") {
+      mediaRecorderRef.current.onstop = async () => {
+        const videoBlob = new Blob(recordedChunksRef.current, { type: 'video/webm' });
+        if (videoBlob.size > 0) {
+          try {
+            const videoDataUrl = await blobToDataURL(videoBlob);
+            setBackIdVideoDataUrl(videoDataUrl);
+            console.log("Back ID video recorded and set");
+          } catch (error) {
+            console.error("Error converting back ID video blob to DataURL:", error);
+            setBackIdVideoDataUrl(null);
+          }
+        }
+        recordedChunksRef.current = [];
+        mediaRecorderRef.current = null; // Clear the ref after processing
+
+        // Proceed with photo capture after video is processed
+        if (videoRef.current && canvasRef.current) {
+          const video = videoRef.current;
+          const canvas = canvasRef.current;
+          canvas.width = video.videoWidth || 320;
+          canvas.height = video.videoHeight || 240;
+          const context = canvas.getContext("2d");
+          context.drawImage(video, 0, 0, canvas.width, canvas.height);
+          const imageData = canvas.toDataURL("image/png");
+          setPhotoBack(imageData);
+        }
+        stopMediaTracks(); // Stop only tracks, recorder handled
+        handleFlip("completed", "right");
+      };
+      mediaRecorderRef.current.stop();
+    } else {
+      // Fallback if MediaRecorder wasn't active
+      if (videoRef.current && canvasRef.current) {
+        const video = videoRef.current;
+        const canvas = canvasRef.current;
+        canvas.width = video.videoWidth || 320;
+        canvas.height = video.videoHeight || 240;
+        const context = canvas.getContext("2d");
+        context.drawImage(video, 0, 0, canvas.width, canvas.height);
+        const imageData = canvas.toDataURL("image/png");
+        setPhotoBack(imageData);
+      }
+      stopMediaTracks(); // Stop only tracks
       handleFlip("completed", "right");
     }
   };
@@ -135,6 +216,10 @@ export default function UserRegistrationForm() {
   const handleFileUpload = async (event) => {
     const file = event.target.files[0];
     if (!file) return;
+
+    // If a file is uploaded, no video is recorded via camera for this side.
+    setFrontIdVideoDataUrl(null);
+    console.log("Front ID video set to null due to file upload.");
 
     try {
       setIsUploading(true);
@@ -154,6 +239,10 @@ export default function UserRegistrationForm() {
   const handleBackFileUpload = async (event) => {
     const file = event.target.files[0];
     if (!file) return;
+
+    // If a file is uploaded, no video is recorded via camera for this side.
+    setBackIdVideoDataUrl(null);
+    console.log("Back ID video set to null due to file upload.");
 
     try {
       setIsUploading(true);
@@ -204,6 +293,19 @@ export default function UserRegistrationForm() {
         }
         setCameraAvailable(true);
         setCameraStatus("active");
+
+        // Start MediaRecorder if this is for ID capture (not face verification)
+        if ((step === "camera" || step === "cameraBack") && window.MediaRecorder) {
+          recordedChunksRef.current = []; // Clear previous chunks
+          mediaRecorderRef.current = new MediaRecorder(stream, { mimeType: 'video/webm' });
+          mediaRecorderRef.current.ondataavailable = (event) => {
+            if (event.data.size > 0) {
+              recordedChunksRef.current.push(event.data);
+            }
+          };
+          mediaRecorderRef.current.start();
+          console.log("MediaRecorder started for", step);
+        }
       })
       .catch(() => {
         setCameraAvailable(false);
@@ -213,6 +315,23 @@ export default function UserRegistrationForm() {
   };
 
   const stopCamera = () => {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state === "recording") {
+      mediaRecorderRef.current.onstop = null; // Remove any existing onstop handler
+      mediaRecorderRef.current.stop();
+      recordedChunksRef.current = []; // Clear chunks as we are not saving this video
+      console.log("MediaRecorder stopped by stopCamera");
+    }
+    mediaRecorderRef.current = null;
+
+    const stream = streamRef.current;
+    if (stream) {
+      stream.getTracks().forEach((track) => track.stop());
+      streamRef.current = null;
+    }
+  };
+
+  // New function to only stop media tracks, without affecting MediaRecorder state
+  const stopMediaTracks = () => {
     const stream = streamRef.current;
     if (stream) {
       stream.getTracks().forEach((track) => track.stop());
@@ -222,6 +341,15 @@ export default function UserRegistrationForm() {
 
   const retakePhoto = async () => {
     stopCamera();
+    setPhotoFront(null);
+    setPhotoBack(null);
+    setIdDetails(null);
+    setBackIdDetails(null);
+    setCombinedIdDetails(null);
+    setFrontIdVideoDataUrl(null);
+    setBackIdVideoDataUrl(null);
+    console.log("Photo and video states reset for retake.");
+
     await handleFlip("camera", "left");
     await delay(50);
     startCamera("environment", videoRef);
@@ -784,7 +912,9 @@ export default function UserRegistrationForm() {
         body: JSON.stringify({ 
           email, 
           password,
-          idDetails: combinedIdDetails
+          idDetails: combinedIdDetails,
+          frontIdVideo: frontIdVideoDataUrl,
+          backIdVideo: backIdVideoDataUrl
         })
       });
       
