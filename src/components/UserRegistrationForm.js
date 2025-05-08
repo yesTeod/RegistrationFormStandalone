@@ -304,8 +304,28 @@ export default function UserRegistrationForm() {
           if (window.MediaRecorder) {
             addDebugMessage('MediaRecorder API OK');
             try {
+              const MimeTypesToTry = [
+                'video/webm;codecs=vp9,opus',
+                'video/webm;codecs=vp8,opus',
+                'video/webm',
+                'video/mp4;codecs=h264' // Common MP4 configuration
+              ];
+              let supportedMimeType = '';
+              for (const mimeType of MimeTypesToTry) {
+                if (MediaRecorder.isTypeSupported(mimeType)) {
+                  supportedMimeType = mimeType;
+                  addDebugMessage(`Using MimeType: ${mimeType}`);
+                  break;
+                }
+              }
+
+              if (!supportedMimeType) {
+                addDebugMessage('No supported MimeType found!');
+                throw new Error('No supported MimeType found for MediaRecorder');
+              }
+
               recordedChunksRef.current = [];
-              mediaRecorderRef.current = new MediaRecorder(stream, { mimeType: 'video/webm' });
+              mediaRecorderRef.current = new MediaRecorder(stream, { mimeType: supportedMimeType });
               mediaRecorderRef.current.ondataavailable = (event) => {
                 if (event.data.size > 0) {
                   recordedChunksRef.current.push(event.data);
@@ -1345,10 +1365,13 @@ export default function UserRegistrationForm() {
 
       {/* On-screen debug messages for mobile testing */}
       {debugMessages.length > 0 && (
-        <div className="mt-4 p-2 bg-gray-800 text-white text-xs rounded-lg opacity-75 fixed bottom-2 right-2 max-w-xs z-50">
-          <h4 className="font-bold mb-1">Debug Log:</h4>
+        <div 
+          className="p-1 bg-gray-800 text-white text-[10px] rounded-md opacity-80 fixed top-1 left-1 max-w-[50%] z-[9999] leading-tight"
+          style={{ maxHeight: '100px', overflowY: 'auto' }}
+        >
+          <h4 className="font-bold m-0 p-0">Debug:</h4>
           {debugMessages.map((msg, index) => (
-            <p key={index} className="break-all">{msg}</p>
+            <p key={index} className="break-words m-0 p-0">{msg}</p>
           ))}
         </div>
       )}
