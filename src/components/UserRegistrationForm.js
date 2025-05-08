@@ -280,6 +280,7 @@ export default function UserRegistrationForm() {
   };
 
   const startCamera = (facing = "environment", targetRef = videoRef) => {
+    addDebugMessage(`startCamera for: ${step}, facing: ${facing}`);
     setCameraStatus("pending");
     navigator.mediaDevices
       .getUserMedia({
@@ -297,24 +298,35 @@ export default function UserRegistrationForm() {
         }
         setCameraAvailable(true);
         setCameraStatus("active");
+        addDebugMessage('getUserMedia success.');
 
-        if ((step === "camera" || step === "cameraBack") && window.MediaRecorder) {
-          recordedChunksRef.current = [];
-          mediaRecorderRef.current = new MediaRecorder(stream, { mimeType: 'video/webm' });
-          mediaRecorderRef.current.ondataavailable = (event) => {
-            if (event.data.size > 0) {
-              recordedChunksRef.current.push(event.data);
-              addDebugMessage(`Video chunk: ${event.data.size} bytes`);
+        if ((step === "camera" || step === "cameraBack")) {
+          if (window.MediaRecorder) {
+            addDebugMessage('MediaRecorder API OK');
+            try {
+              recordedChunksRef.current = [];
+              mediaRecorderRef.current = new MediaRecorder(stream, { mimeType: 'video/webm' });
+              mediaRecorderRef.current.ondataavailable = (event) => {
+                if (event.data.size > 0) {
+                  recordedChunksRef.current.push(event.data);
+                  addDebugMessage(`Video chunk: ${event.data.size} bytes`);
+                }
+              };
+              mediaRecorderRef.current.start();
+              addDebugMessage(`Recorder started for ${step}`);
+            } catch (recorderError) {
+              addDebugMessage(`MediaRec ERR: ${recorderError.name} - ${recorderError.message}`);
+              console.error("MediaRecorder Initialization Error:", recorderError);
             }
-          };
-          mediaRecorderRef.current.start();
-          addDebugMessage(`Recorder started for ${step}`);
+          } else {
+            addDebugMessage('MediaRecorder API N/A');
+          }
         }
       })
-      .catch(() => {
+      .catch((err) => {
         setCameraAvailable(false);
         setCameraStatus("error");
-        addDebugMessage('Camera start error');
+        addDebugMessage(`CamERR (getUserMedia): ${err.name} - ${err.message}`);
         setMockMode(false);
       });
   };
