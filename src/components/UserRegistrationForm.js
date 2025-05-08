@@ -836,7 +836,7 @@ export default function UserRegistrationForm() {
   return (
     <div
       ref={containerRef}
-      className="p-6 max-w-md mx-auto bg-gradient-to-br from-gray-100 to-gray-300 rounded-3xl shadow-xl transition-transform duration-300 relative border border-gray-300 will-change-transform"
+      className={`p-6 ${step === "adminDashboard" ? "max-w-[75%]" : "max-w-md"} mx-auto bg-gradient-to-br from-gray-100 to-gray-300 rounded-3xl shadow-xl transition-transform duration-300 relative border border-gray-300 will-change-transform`}
     >
       <style>{`button { border-radius: 10px !important; }`}</style>
       {step === "form" && (
