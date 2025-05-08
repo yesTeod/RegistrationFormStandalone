@@ -1147,13 +1147,14 @@ export default function UserRegistrationForm() {
                 
                 {userData.idDetails && (
                   <>
-                    {/* Name and Father's Name from idDetails */}
+                    {/* Given Name from idDetails */}
                     {userData.idDetails.name && userData.idDetails.name !== "Not found" &&
-                      <p>
-                        <span className="font-medium">Name:</span>
-                        {` ${userData.idDetails.name}`}
-                        {userData.idDetails.fatherName && userData.idDetails.fatherName !== "Not found" ? ` ${userData.idDetails.fatherName}` : ""}
-                      </p>
+                      <p><span className="font-medium">Given Name:</span> {userData.idDetails.name}</p>
+                    }
+
+                    {/* Surname from idDetails (using fatherName field) */}
+                    {userData.idDetails.fatherName && userData.idDetails.fatherName !== "Not found" &&
+                      <p><span className="font-medium">Surname:</span> {userData.idDetails.fatherName}</p>
                     }
 
                     {/* ID Number from idDetails */}
