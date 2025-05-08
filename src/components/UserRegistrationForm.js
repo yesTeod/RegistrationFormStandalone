@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from "react";
+import AdminDashboard from './AdminDashboard';
 
 export default function UserRegistrationForm() {
   const [step, setStep] = useState("form");
@@ -79,7 +80,11 @@ export default function UserRegistrationForm() {
       if (response.ok && data.success) {
         console.log("User logged in successfully:", data);
         setUserData(data);
-        handleFlip("loggedIn", "right");
+        if (data.isAdmin) {
+          handleFlip("adminDashboard", "right");
+        } else {
+          handleFlip("loggedIn", "right");
+        }
       } else if (data.code === 'EMAIL_NOT_FOUND') {
         console.log("User doesn't exist, continuing with registration");
         startCamera();
@@ -800,7 +805,11 @@ export default function UserRegistrationForm() {
           if (loginResponse.ok && loginData.success) {
             console.log("Auto-login after registration successful:", loginData);
             setUserData(loginData); // Use login data to set the user session
-            handleFlip("loggedIn", "right"); // Go to the loggedIn step (dashboard)
+            if (loginData.isAdmin) {
+              handleFlip("adminDashboard", "right");
+            } else {
+              handleFlip("loggedIn", "right"); // Go to the loggedIn step (dashboard)
+            }
           } else {
             console.error("Auto-login after registration failed:", loginData.error || "Unknown error");
             alert("Registration was successful, but auto-login failed. Please try logging in manually.");
@@ -1194,6 +1203,10 @@ export default function UserRegistrationForm() {
             Go to Login
           </button>
         </div>
+      )}
+
+      {step === "adminDashboard" && (
+        <AdminDashboard />
       )}
       
       <canvas ref={canvasRef} className="hidden" />
