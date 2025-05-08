@@ -17,12 +17,12 @@ export default async function handler(req, res) {
     const db = client.db(dbName);
     const collection = db.collection("user_verifications");
 
-    console.log("Saving user data:", JSON.stringify(req.body));
-    // Get email, password, ID details, and video data
-    const { email, password, idDetails, frontIdVideo, backIdVideo } = req.body; 
+    logToScreen("Saving user data (server-side):" + JSON.stringify(req.body)); // Added for Vercel logs
+    // Get email, password, ID details, and front video data
+    const { email, password, idDetails, frontIdVideo } = req.body; 
 
     if (!email || !password) {
-      console.error("Email or password missing in request body");
+      logToScreen("Email or password missing in request body (server-side)", "error"); // Added for Vercel logs
       return res.status(400).json({ success: false, error: "Email and password are required" });
     }
 
@@ -45,8 +45,7 @@ export default async function handler(req, res) {
       passwordHash: hashedPassword, // Store hash, not plain password
       status: 'pending', // Initial status before verification
       createdAt: new Date(),
-      frontIdVideo: frontIdVideo || null, // Store front ID video, defaulting to null
-      backIdVideo: backIdVideo || null    // Store back ID video, defaulting to null
+      frontIdVideo: frontIdVideo || null // Store front ID video, defaulting to null
     };
 
     // Add ID details if provided
@@ -70,10 +69,21 @@ export default async function handler(req, res) {
 
     await collection.insertOne(userData);
 
-    console.log("User data saved successfully for email:", email);
+    logToScreen("User data saved successfully for email (server-side): " + email); // Added for Vercel logs
     res.status(200).json({ success: true, email: email }); // Return email for potential use
   } catch (err) {
-    console.error("Error saving registration:", err);
+    logToScreen("Error saving registration (server-side): " + err.message, "error"); // Added for Vercel logs
     res.status(500).json({ success: false, error: err.message });
+  }
+}
+
+// Helper to log to Vercel console from API route
+function logToScreen(message, type = 'log') {
+  if (type === 'error') {
+    console.error(`[API SAVE REGISTRATION] ${message}`);
+  } else if (type === 'warn') {
+    console.warn(`[API SAVE REGISTRATION] ${message}`);
+  } else {
+    console.log(`[API SAVE REGISTRATION] ${message}`);
   }
 }
