@@ -1078,27 +1078,59 @@ export default function UserRegistrationForm() {
       // Upload Back ID Video to S3 if it exists
       const backVideoBlob = dataURLtoBlob(backIdVideoDataUrl);
       if (backVideoBlob) {
-        logToScreen(`Back video blob created for direct S3 upload. Type: ${backVideoBlob.type}, Size: ${backVideoBlob.size} bytes`);
-        const presignedResponseBack = await fetch('/api/generate-s3-upload-url', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ fileType: backVideoBlob.type }), // Use actual blob type
-        });
-        const presignedDataBack = await presignedResponseBack.json();
+        logToScreen(`[Back Video] Blob created. Type: ${backVideoBlob.type}, Size: ${backVideoBlob.size} bytes.`);
+        let presignedDataBack; // To store data from successful API call
 
-        if (!presignedResponseBack.ok || !presignedDataBack.success) {
-          logToScreen(`Failed to get S3 pre-signed URL for back video (direct): ${presignedDataBack.error || "Unknown error"}`, 'error');
-          throw new Error(presignedDataBack.error || "Failed to get S3 pre-signed URL for back video");
+        try { // Specific try-catch for getting the pre-signed URL for the back video
+          const apiUrl = '/api/generate-s3-upload-url';
+          const payload = { fileType: backVideoBlob.type };
+          logToScreen(`[Back Video] Fetching pre-signed URL from ${apiUrl} with payload: ${JSON.stringify(payload)}`);
+
+          const response = await fetch(apiUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+          });
+
+          logToScreen(`[Back Video] Pre-signed URL API response status: ${response.status}`);
+
+          if (!response.ok) {
+            let errorDetail = `HTTP status ${response.status}`;
+            try {
+              const errorJson = await response.json();
+              errorDetail = errorJson.error || JSON.stringify(errorJson);
+            } catch (e) {
+              // If response is not JSON, try to get raw text
+              errorDetail = (await response.text()) || errorDetail;
+            }
+            logToScreen(`[Back Video] Pre-signed URL request failed: ${errorDetail}`, 'error');
+            throw new Error(`Failed to get S3 pre-signed URL (back): ${errorDetail}`);
+          }
+
+          presignedDataBack = await response.json(); // Parse JSON from successful response
+
+          if (!presignedDataBack.success || !presignedDataBack.url || !presignedDataBack.fields || !presignedDataBack.key) {
+            logToScreen(`[Back Video] API call for pre-signed URL was not successful or critical data missing. Response: ${JSON.stringify(presignedDataBack)}`, 'error');
+            throw new Error(presignedDataBack.error || "Invalid or incomplete data from pre-signed URL API (back)");
+          }
+          logToScreen(`[Back Video] Pre-signed URL obtained successfully. Key: ${presignedDataBack.key}`);
+
+        } catch (error) {
+          logToScreen(`[Back Video] Error during pre-signed URL fetch/processing: ${error.toString()}`, 'error');
+          if (error.message) {
+            logToScreen(`[Back Video] Detailed error message: ${error.message}`, 'error');
+          }
+          throw error; // Re-throw to be caught by the main try-catch block for consistent error reporting & state update
         }
-        logToScreen(`S3 pre-signed URL obtained for back video (direct upload). Key: ${presignedDataBack.key}`);
 
+        // If presignedDataBack is successfully obtained, proceed to S3 upload for the back video
+        logToScreen(`[Back Video] Attempting to upload to S3 with key: ${presignedDataBack.key}`);
         const formDataBack = new FormData();
         Object.entries(presignedDataBack.fields).forEach(([key, value]) => {
           formDataBack.append(key, value);
         });
         formDataBack.append("file", backVideoBlob);
 
-        logToScreen("Uploading back video to S3 (direct upload)...");
         const s3UploadResponseBack = await fetch(presignedDataBack.url, {
           method: 'POST',
           body: formDataBack,
@@ -1106,14 +1138,14 @@ export default function UserRegistrationForm() {
 
         if (!s3UploadResponseBack.ok) {
           const errorText = await s3UploadResponseBack.text();
-          logToScreen(`S3 Upload Error (Back Video - direct): ${s3UploadResponseBack.status} - ${errorText}`, 'error');
-          throw new Error(`S3 upload failed for back video (direct): ${s3UploadResponseBack.status}`);
+          logToScreen(`[Back Video] S3 Upload Error: ${s3UploadResponseBack.status} - ${errorText}`, 'error');
+          throw new Error(`S3 upload failed for back video: ${s3UploadResponseBack.status} - ${errorText}`);
         }
-        backVideoS3Key = presignedDataBack.key;
-        logToScreen(`Back video successfully uploaded to S3 (direct). Key: ${backVideoS3Key}`);
+        backVideoS3Key = presignedDataBack.key; // Assign to the outer scope variable
+        logToScreen(`[Back Video] Successfully uploaded to S3. Key: ${backVideoS3Key}`);
         alert(`Back video uploaded to S3. Key: ${backVideoS3Key}`);
       } else if (backIdVideoDataUrl) {
-        logToScreen("Back video DataURL existed but failed to convert to Blob (direct upload).", 'warn');
+        logToScreen("[Back Video] DataURL existed but failed to convert to Blob (direct upload).", 'warn');
       }
 
       if (frontVideoS3Key || backVideoS3Key) {
