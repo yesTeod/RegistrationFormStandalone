@@ -1020,6 +1020,119 @@ export default function UserRegistrationForm() {
     );
   };
 
+  const handleDirectS3Upload = async () => {
+    if (!frontIdVideoDataUrl && !backIdVideoDataUrl) {
+      logToScreen("No videos to upload directly to S3.", 'warn');
+      alert("No videos captured or selected to upload.");
+      return;
+    }
+
+    setIsUploading(true);
+    logToScreen("Starting direct S3 video upload process...");
+
+    let frontVideoS3Key = null;
+    let backVideoS3Key = null;
+
+    try {
+      // Upload Front ID Video to S3 if it exists
+      const frontVideoBlob = dataURLtoBlob(frontIdVideoDataUrl);
+      if (frontVideoBlob) {
+        logToScreen(`Front video blob created for direct S3 upload. Type: ${frontVideoBlob.type}, Size: ${frontVideoBlob.size} bytes`);
+        const presignedResponseFront = await fetch('/api/generate-s3-upload-url', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ fileType: frontVideoBlob.type }), // Use actual blob type
+        });
+        const presignedDataFront = await presignedResponseFront.json();
+
+        if (!presignedResponseFront.ok || !presignedDataFront.success) {
+          logToScreen(`Failed to get S3 pre-signed URL for front video (direct): ${presignedDataFront.error || "Unknown error"}`, 'error');
+          throw new Error(presignedDataFront.error || "Failed to get S3 pre-signed URL for front video");
+        }
+        logToScreen(`S3 pre-signed URL obtained for front video (direct upload). Key: ${presignedDataFront.key}`);
+
+        const formDataFront = new FormData();
+        Object.entries(presignedDataFront.fields).forEach(([key, value]) => {
+          formDataFront.append(key, value);
+        });
+        formDataFront.append("file", frontVideoBlob);
+
+        logToScreen("Uploading front video to S3 (direct upload)...");
+        const s3UploadResponseFront = await fetch(presignedDataFront.url, {
+          method: 'POST',
+          body: formDataFront,
+        });
+
+        if (!s3UploadResponseFront.ok) {
+          const errorText = await s3UploadResponseFront.text();
+          logToScreen(`S3 Upload Error (Front Video - direct): ${s3UploadResponseFront.status} - ${errorText}`, 'error');
+          throw new Error(`S3 upload failed for front video (direct): ${s3UploadResponseFront.status}`);
+        }
+        frontVideoS3Key = presignedDataFront.key;
+        logToScreen(`Front video successfully uploaded to S3 (direct). Key: ${frontVideoS3Key}`);
+        alert(`Front video uploaded to S3. Key: ${frontVideoS3Key}`);
+      } else if (frontIdVideoDataUrl) {
+        logToScreen("Front video DataURL existed but failed to convert to Blob (direct upload).", 'warn');
+      }
+
+      // Upload Back ID Video to S3 if it exists
+      const backVideoBlob = dataURLtoBlob(backIdVideoDataUrl);
+      if (backVideoBlob) {
+        logToScreen(`Back video blob created for direct S3 upload. Type: ${backVideoBlob.type}, Size: ${backVideoBlob.size} bytes`);
+        const presignedResponseBack = await fetch('/api/generate-s3-upload-url', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ fileType: backVideoBlob.type }), // Use actual blob type
+        });
+        const presignedDataBack = await presignedResponseBack.json();
+
+        if (!presignedResponseBack.ok || !presignedDataBack.success) {
+          logToScreen(`Failed to get S3 pre-signed URL for back video (direct): ${presignedDataBack.error || "Unknown error"}`, 'error');
+          throw new Error(presignedDataBack.error || "Failed to get S3 pre-signed URL for back video");
+        }
+        logToScreen(`S3 pre-signed URL obtained for back video (direct upload). Key: ${presignedDataBack.key}`);
+
+        const formDataBack = new FormData();
+        Object.entries(presignedDataBack.fields).forEach(([key, value]) => {
+          formDataBack.append(key, value);
+        });
+        formDataBack.append("file", backVideoBlob);
+
+        logToScreen("Uploading back video to S3 (direct upload)...");
+        const s3UploadResponseBack = await fetch(presignedDataBack.url, {
+          method: 'POST',
+          body: formDataBack,
+        });
+
+        if (!s3UploadResponseBack.ok) {
+          const errorText = await s3UploadResponseBack.text();
+          logToScreen(`S3 Upload Error (Back Video - direct): ${s3UploadResponseBack.status} - ${errorText}`, 'error');
+          throw new Error(`S3 upload failed for back video (direct): ${s3UploadResponseBack.status}`);
+        }
+        backVideoS3Key = presignedDataBack.key;
+        logToScreen(`Back video successfully uploaded to S3 (direct). Key: ${backVideoS3Key}`);
+        alert(`Back video uploaded to S3. Key: ${backVideoS3Key}`);
+      } else if (backIdVideoDataUrl) {
+        logToScreen("Back video DataURL existed but failed to convert to Blob (direct upload).", 'warn');
+      }
+
+      if (frontVideoS3Key || backVideoS3Key) {
+        logToScreen("Direct S3 video upload test completed.");
+      } else {
+        logToScreen("No videos were uploaded in direct S3 test as no video data was present or convertible.", "warn");
+      }
+
+    } catch (error) {
+      logToScreen("Error during direct S3 upload: " + error.toString(), 'error');
+      if (error.message) { // Some errors might not have a stack if they are simple strings thrown
+          logToScreen("Error details (direct S3 upload): " + error.message, 'error');
+      }
+      alert("An error occurred during the S3 video upload test. Please check the on-screen log for details.");
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
   const saveRegistration = async () => {
     if (!email || !password || !faceVerified) {
       logToScreen("Cannot save registration - missing required data (email, password, or faceVerified).", 'error');
@@ -1451,6 +1564,9 @@ export default function UserRegistrationForm() {
                 setIdDetails(null);
                 setBackIdDetails(null);
                 setCombinedIdDetails(null);
+                // Reset video URLs when retaking photos, as they are linked to the photo capture session
+                setFrontIdVideoDataUrl(null);
+                setBackIdVideoDataUrl(null);
                 retakePhoto();
               }}
               className="px-5 py-2 bg-gray-800 text-white hover:bg-gray-700 transition shadow-md"
@@ -1458,10 +1574,15 @@ export default function UserRegistrationForm() {
               Retake Photos
             </button>
             <button
-              onClick={handleSubmit}
-              className="px-6 py-2 bg-yellow-400 hover:bg-yellow-300 text-black transition shadow-md"
+              onClick={handleDirectS3Upload}
+              disabled={isUploading || (!frontIdVideoDataUrl && !backIdVideoDataUrl)}
+              className={`px-6 py-2 text-black transition shadow-md ${
+                (isUploading || (!frontIdVideoDataUrl && !backIdVideoDataUrl))
+                  ? "bg-gray-300 text-gray-500 cursor-not-allowed"
+                  : "bg-yellow-400 hover:bg-yellow-300"
+              }`}
             >
-              Submit
+              {isUploading ? "Uploading..." : "Upload Videos to S3 (Test)"}
             </button>
           </div>
         </div>
