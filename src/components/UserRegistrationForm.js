@@ -336,7 +336,9 @@ export default function UserRegistrationForm() {
 
   const startCamera = (facing = "environment", targetRef = videoRef) => {
     setCameraStatus("pending");
-    logToScreen(`Attempting to start camera with facing: ${facing}, targetRef: ${targetRef === videoRef ? 'videoRef' : 'faceVideoRef'}`);
+    const currentStep = step; // Capture current step for accurate logging within async operations
+    logToScreen(`[${currentStep}] Attempting to start camera. Facing: ${facing}, Target: ${targetRef === videoRef ? 'videoRef' : 'faceVideoRef'}`);
+    
     navigator.mediaDevices
       .getUserMedia({
         video: {
@@ -353,10 +355,10 @@ export default function UserRegistrationForm() {
         }
         setCameraAvailable(true);
         setCameraStatus("active");
-        logToScreen(`Camera started successfully. Stream: ${stream.id}`);
+        logToScreen(`[${currentStep}] Camera started successfully. Stream ID: ${stream.id}`);
 
         // Start MediaRecorder if this is for ID capture (not face verification)
-        if ((step === "camera" || step === "cameraBack") && window.MediaRecorder) {
+        if ((currentStep === "camera" || currentStep === "cameraBack") && window.MediaRecorder) {
           recordedChunksRef.current = []; // Clear previous chunks
           try {
             const MimeTypesToTry = [
@@ -371,14 +373,14 @@ export default function UserRegistrationForm() {
             for (const mimeType of MimeTypesToTry) {
               if (MediaRecorder.isTypeSupported(mimeType)) {
                 supportedMimeType = mimeType;
-                logToScreen(`Supported MIME type found: ${supportedMimeType}`);
+                logToScreen(`[${currentStep}] Supported MIME type found: ${supportedMimeType}`);
                 break;
               }
-              logToScreen(`MIME type not supported: ${mimeType}`, 'warn');
+              logToScreen(`[${currentStep}] MIME type not supported: ${mimeType}`, 'warn');
             }
 
             if (!supportedMimeType) {
-              logToScreen("No supported MIME type found for MediaRecorder. Video recording will be disabled.", 'error');
+              logToScreen(`[${currentStep}] No supported MIME type found for MediaRecorder. Video recording will be disabled for this step.`, 'error');
               mediaRecorderRef.current = null;
               return; // Exit if no supported MIME type
             }
@@ -387,35 +389,35 @@ export default function UserRegistrationForm() {
             mediaRecorderRef.current.ondataavailable = (event) => {
               if (event.data.size > 0) {
                 recordedChunksRef.current.push(event.data);
-                logToScreen(`MediaRecorder data available for ${step}. Chunk size: ${event.data.size}. Total chunks: ${recordedChunksRef.current.length}`);
+                logToScreen(`[${currentStep}] MediaRecorder data available. Chunk size: ${event.data.size}. Total chunks: ${recordedChunksRef.current.length}`);
               } else {
-                logToScreen(`MediaRecorder data available for ${step}, but chunk size is 0.`, 'warn');
+                logToScreen(`[${currentStep}] MediaRecorder data available, but chunk size is 0.`, 'warn');
               }
             };
             mediaRecorderRef.current.onstart = () => {
-              logToScreen(`MediaRecorder started successfully for ${step}. State: ${mediaRecorderRef.current.state}`);
+              logToScreen(`[${currentStep}] MediaRecorder started successfully. State: ${mediaRecorderRef.current.state}, MIMEType: ${supportedMimeType}`);
             };
             mediaRecorderRef.current.onstop = () => {
-              logToScreen(`MediaRecorder stopped for ${step}. State: ${mediaRecorderRef.current.state}. Chunks collected: ${recordedChunksRef.current.length}`);
+              logToScreen(`[${currentStep}] MediaRecorder stopped. State: ${mediaRecorderRef.current.state}. Chunks collected: ${recordedChunksRef.current.length}`);
             };
             mediaRecorderRef.current.onerror = (event) => {
-              logToScreen(`MediaRecorder error for ${step}: ` + event.error, 'error');
+              logToScreen(`[${currentStep}] MediaRecorder error: ` + JSON.stringify(event.error || event), 'error');
             };
             mediaRecorderRef.current.start();
-            logToScreen(`MediaRecorder.start() called for ${step} with MIME type ${supportedMimeType}. Current state: ${mediaRecorderRef.current.state}`);
+            logToScreen(`[${currentStep}] MediaRecorder.start() called. Current state: ${mediaRecorderRef.current.state}`);
           } catch (e) {
-            logToScreen("Error initializing MediaRecorder: " + e, 'error');
+            logToScreen(`[${currentStep}] Error initializing MediaRecorder: ` + e, 'error');
             mediaRecorderRef.current = null;
           }
-        } else if (step === "camera" || step === "cameraBack") {
-          logToScreen("MediaRecorder API not available in this browser.", 'warn');
+        } else if (currentStep === "camera" || currentStep === "cameraBack") {
+          logToScreen(`[${currentStep}] MediaRecorder API not available in this browser.`, 'warn');
         }
       })
       .catch((err) => {
         setCameraAvailable(false);
         setCameraStatus("error");
         setMockMode(false);
-        logToScreen("Error starting camera: " + err, 'error');
+        logToScreen(`[${currentStep}] Error starting camera: ` + err, 'error');
       });
   };
 
