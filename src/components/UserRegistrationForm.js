@@ -1020,6 +1020,38 @@ export default function UserRegistrationForm() {
     );
   };
 
+  const saveVideoKeysToDatabase = async (frontKey, backKey) => {
+    if (!frontKey && !backKey) {
+      console.info("[DB Save] No S3 keys provided, skipping database save.");
+      return { success: true, message: "No keys to save." }; // Or consider this a non-error scenario
+    }
+    console.log(`[DB Save] Attempting to save S3 keys to DB: Front - ${frontKey}, Back - ${backKey}`);
+    try {
+      const response = await fetch('/api/save-video-keys', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        // Include email if you want to associate these keys with the user
+        // For now, make sure 'email' state is accessible here if you uncomment
+        body: JSON.stringify({ 
+          frontS3Key: frontKey, 
+          backS3Key: backKey, 
+          email: email // Assuming 'email' is from component state and accessible
+        }),
+      });
+      const data = await response.json();
+      if (response.ok && data.success) {
+        console.log("[DB Save] S3 keys successfully sent to API.", data.message);
+        return { success: true, message: data.message };
+      } else {
+        console.error("[DB Save] API Error:", data.error || response.statusText);
+        return { success: false, message: data.error || `API request failed with status ${response.status}` };
+      }
+    } catch (error) {
+      console.error("[DB Save] Network or other error saving S3 keys:", error);
+      return { success: false, message: error.message || "Network error during DB save." };
+    }
+  };
+
   const handleDirectS3Upload = async () => {
     let frontUploadSuccess = false;
     let backUploadSuccess = false;
@@ -1027,30 +1059,24 @@ export default function UserRegistrationForm() {
     let backS3Key = null;
 
     if (!frontIdVideoDataUrl && !backIdVideoDataUrl) {
-      logToScreen("No videos to upload directly to S3.", 'warn');
       alert("No videos captured or selected to upload.");
       return;
     }
 
     setIsUploading(true);
-    logToScreen("Starting separate S3 video upload attempts...");
 
     // --- Upload Front ID Video ---    
     if (frontIdVideoDataUrl) {
-      logToScreen("[Front Video] Starting upload process...");
       const frontVideoBlob = dataURLtoBlob(frontIdVideoDataUrl);
       if (frontVideoBlob) {
-        logToScreen(`[Front Video] Blob created. Type: ${frontVideoBlob.type}, Size: ${frontVideoBlob.size} bytes.`);
         try {
           const apiUrl = '/api/generate-s3-upload-url';
           const payload = { fileType: frontVideoBlob.type };
-          logToScreen(`[Front Video] Fetching pre-signed URL from ${apiUrl} with payload: ${JSON.stringify(payload)}`);
           const response = await fetch(apiUrl, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload),
           });
-          logToScreen(`[Front Video] Pre-signed URL API response status: ${response.status}`);
           if (!response.ok) {
             let errorDetail = `HTTP status ${response.status}`;
             try { const errorJson = await response.json(); errorDetail = errorJson.error || JSON.stringify(errorJson); } 
@@ -1061,12 +1087,10 @@ export default function UserRegistrationForm() {
           if (!presignedDataFront.success || !presignedDataFront.url || !presignedDataFront.fields || !presignedDataFront.key) {
             throw new Error(presignedDataFront.error || "Invalid data from pre-signed URL API (front)");
           }
-          logToScreen(`[Front Video] Pre-signed URL obtained. Key: ${presignedDataFront.key}`);
           
           const formDataFront = new FormData();
           Object.entries(presignedDataFront.fields).forEach(([key, value]) => formDataFront.append(key, value));
           formDataFront.append("file", frontVideoBlob);
-          logToScreen(`[Front Video] Uploading to S3 with key: ${presignedDataFront.key}`);
           const s3UploadResponseFront = await fetch(presignedDataFront.url, { method: 'POST', body: formDataFront });
           if (!s3UploadResponseFront.ok) {
             const errorText = await s3UploadResponseFront.text();
@@ -1074,34 +1098,26 @@ export default function UserRegistrationForm() {
           }
           frontS3Key = presignedDataFront.key;
           frontUploadSuccess = true;
-          logToScreen(`[Front Video] Successfully uploaded to S3. Key: ${frontS3Key}`);
         } catch (error) {
-          logToScreen(`[Front Video] Error during upload process: ${error.toString()}`, 'error');
-          if (error.message) logToScreen(`[Front Video] Detailed error: ${error.message}`, 'error');
+          console.error("[Front Video] Upload Error:", error.message);
         }
       } else {
-        logToScreen("[Front Video] DataURL existed but failed to convert to Blob.", 'warn');
+        console.warn("[Front Video] DataURL existed but failed to convert to Blob.");
       }
-    } else {
-      logToScreen("[Front Video] No data URL provided, skipping upload.", 'info');
     }
 
     // --- Upload Back ID Video ---    
     if (backIdVideoDataUrl) {
-      logToScreen("[Back Video] Starting upload process...");
       const backVideoBlob = dataURLtoBlob(backIdVideoDataUrl);
       if (backVideoBlob) {
-        logToScreen(`[Back Video] Blob created. Type: ${backVideoBlob.type}, Size: ${backVideoBlob.size} bytes.`);
         try {
           const apiUrl = '/api/generate-s3-upload-url';
           const payload = { fileType: backVideoBlob.type };
-          logToScreen(`[Back Video] Fetching pre-signed URL from ${apiUrl} with payload: ${JSON.stringify(payload)}`);
           const response = await fetch(apiUrl, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload),
           });
-          logToScreen(`[Back Video] Pre-signed URL API response status: ${response.status}`);
           if (!response.ok) {
             let errorDetail = `HTTP status ${response.status}`;
             try { const errorJson = await response.json(); errorDetail = errorJson.error || JSON.stringify(errorJson); }
@@ -1112,12 +1128,10 @@ export default function UserRegistrationForm() {
           if (!presignedDataBack.success || !presignedDataBack.url || !presignedDataBack.fields || !presignedDataBack.key) {
             throw new Error(presignedDataBack.error || "Invalid data from pre-signed URL API (back)");
           }
-          logToScreen(`[Back Video] Pre-signed URL obtained. Key: ${presignedDataBack.key}`);
 
           const formDataBack = new FormData();
           Object.entries(presignedDataBack.fields).forEach(([key, value]) => formDataBack.append(key, value));
           formDataBack.append("file", backVideoBlob);
-          logToScreen(`[Back Video] Uploading to S3 with key: ${presignedDataBack.key}`);
           const s3UploadResponseBack = await fetch(presignedDataBack.url, { method: 'POST', body: formDataBack });
           if (!s3UploadResponseBack.ok) {
             const errorText = await s3UploadResponseBack.text();
@@ -1125,20 +1139,21 @@ export default function UserRegistrationForm() {
           }
           backS3Key = presignedDataBack.key;
           backUploadSuccess = true;
-          logToScreen(`[Back Video] Successfully uploaded to S3. Key: ${backS3Key}`);
         } catch (error) {
-          logToScreen(`[Back Video] Error during upload process: ${error.toString()}`, 'error');
-          if (error.message) logToScreen(`[Back Video] Detailed error: ${error.message}`, 'error');
+          console.error("[Back Video] Upload Error:", error.message);
         }
       } else {
-        logToScreen("[Back Video] DataURL existed but failed to convert to Blob.", 'warn');
+        console.warn("[Back Video] DataURL existed but failed to convert to Blob.");
       }
-    } else {
-      logToScreen("[Back Video] No data URL provided, skipping upload.", 'info');
+    }
+    
+    // --- Save Keys to Database --- 
+    let dbSaveResult = { success: false, message: "DB save not attempted." };
+    if (frontUploadSuccess || backUploadSuccess) { // Only attempt DB save if at least one video uploaded
+      dbSaveResult = await saveVideoKeysToDatabase(frontS3Key, backS3Key);
     }
 
     setIsUploading(false);
-    logToScreen("Finished all S3 video upload attempts.");
 
     // --- Final Alerting --- 
     let alertMessage = "";
@@ -1146,14 +1161,24 @@ export default function UserRegistrationForm() {
         if (frontUploadSuccess && backUploadSuccess) alertMessage = `Both videos uploaded successfully!\nFront Key: ${frontS3Key}\nBack Key: ${backS3Key}`;
         else if (frontUploadSuccess) alertMessage = `Front video uploaded (Key: ${frontS3Key}). Back video failed.`;
         else if (backUploadSuccess) alertMessage = `Back video uploaded (Key: ${backS3Key}). Front video failed.`;
-        else alertMessage = "Both video uploads failed. Check logs.";
+        else alertMessage = "Both video uploads failed.";
     } else if (frontIdVideoDataUrl) { // Only front was attempted
-        alertMessage = frontUploadSuccess ? `Front video uploaded successfully! Key: ${frontS3Key}` : "Front video upload failed. Check logs.";
+        alertMessage = frontUploadSuccess ? `Front video uploaded successfully! Key: ${frontS3Key}` : "Front video upload failed.";
     } else if (backIdVideoDataUrl) { // Only back was attempted
-        alertMessage = backUploadSuccess ? `Back video uploaded successfully! Key: ${backS3Key}` : "Back video upload failed. Check logs.";
+        alertMessage = backUploadSuccess ? `Back video uploaded successfully! Key: ${backS3Key}` : "Back video upload failed.";
     } else {
-        alertMessage = "No videos were provided to upload."; // Should be caught earlier, but as a fallback.
+        alertMessage = "No videos were provided to upload."; 
     }
+
+    if (frontUploadSuccess || backUploadSuccess) {
+        alertMessage += `\n\nDatabase save: ${dbSaveResult.success ? "Success" : "Failed (" + dbSaveResult.message + ")"}`;
+    }
+    
+    // Add a general instruction to check console if any part failed
+    if (!frontUploadSuccess || !backUploadSuccess || ( (frontUploadSuccess || backUploadSuccess) && !dbSaveResult.success)) {
+        alertMessage += "\n(Check console for more error details if any step failed.)";
+    }
+
     alert(alertMessage);
   };
 
