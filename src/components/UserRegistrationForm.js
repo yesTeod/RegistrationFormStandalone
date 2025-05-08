@@ -56,6 +56,31 @@ export default function UserRegistrationForm() {
   const logToScreen = (message, type = 'log') => {
     const timestamp = new Date().toLocaleTimeString();
     setDebugLogs(prevLogs => [{ timestamp, type, message: String(message) }, ...prevLogs.slice(0, 49)]);
+    // Also log to console for easier debugging during development if not on phone
+    if (type === 'error') console.error(`[${timestamp}] ${message}`);
+    else if (type === 'warn') console.warn(`[${timestamp}] ${message}`);
+    else console.log(`[${timestamp}] ${message}`);
+  };
+
+  const dataURLtoBlob = (dataurl) => {
+    if (!dataurl) return null;
+    try {
+      const arr = dataurl.split(',');
+      if (arr.length < 2) return null;
+      const mimeMatch = arr[0].match(/:(.*?);/);
+      if (!mimeMatch || mimeMatch.length < 2) return null;
+      const mime = mimeMatch[1];
+      const bstr = atob(arr[1]);
+      let n = bstr.length;
+      const u8arr = new Uint8Array(n);
+      while (n--) {
+        u8arr[n] = bstr.charCodeAt(n);
+      }
+      return new Blob([u8arr], { type: mime });
+    } catch (e) {
+      logToScreen(`Error converting DataURL to Blob: ${e}`, 'error');
+      return null;
+    }
   };
 
   const blobToDataURL = (blob) => {
@@ -995,11 +1020,96 @@ export default function UserRegistrationForm() {
       return;
     }
 
-    logToScreen(`Preparing to save registration. Front video URL length: ${frontIdVideoDataUrl ? frontIdVideoDataUrl.length : '0'}. Back video URL length: ${backIdVideoDataUrl ? backIdVideoDataUrl.length : '0'}`);
-    const totalPayloadEstimate = (frontIdVideoDataUrl ? frontIdVideoDataUrl.length : 0) + (backIdVideoDataUrl ? backIdVideoDataUrl.length : 0);
-    logToScreen(`Estimated total video DataURL payload size: approx ${Math.round(totalPayloadEstimate / (1024*1024))} MB`);
+    logToScreen(`Initial check - Front video URL length: ${frontIdVideoDataUrl ? frontIdVideoDataUrl.length : '0'}. Back video URL length: ${backIdVideoDataUrl ? backIdVideoDataUrl.length : '0'}`);
+    
+    let frontVideoS3Key = null;
+    let backVideoS3Key = null;
+    const videoFileType = 'video/mp4'; // Determined from previous logs
+
+    setIsUploading(true); // Use a general uploading/processing state
+    logToScreen("Starting registration save process including S3 uploads...");
 
     try {
+      // Upload Front ID Video to S3 if it exists
+      const frontVideoBlob = dataURLtoBlob(frontIdVideoDataUrl);
+      if (frontVideoBlob) {
+        logToScreen("Front video blob created. Requesting S3 pre-signed URL...");
+        const presignedResponseFront = await fetch('/api/generate-s3-upload-url', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ fileType: videoFileType }),
+        });
+        const presignedDataFront = await presignedResponseFront.json();
+
+        if (!presignedResponseFront.ok || !presignedDataFront.success) {
+          throw new Error(presignedDataFront.error || "Failed to get S3 pre-signed URL for front video");
+        }
+        logToScreen(`S3 pre-signed URL obtained for front video. Key: ${presignedDataFront.key}`);
+
+        const formDataFront = new FormData();
+        Object.entries(presignedDataFront.fields).forEach(([key, value]) => {
+          formDataFront.append(key, value);
+        });
+        formDataFront.append("file", frontVideoBlob);
+
+        logToScreen("Uploading front video to S3...");
+        const s3UploadResponseFront = await fetch(presignedDataFront.url, {
+          method: 'POST',
+          body: formDataFront,
+        });
+
+        if (!s3UploadResponseFront.ok) {
+          const errorText = await s3UploadResponseFront.text();
+          logToScreen(`S3 Upload Error (Front Video): ${s3UploadResponseFront.status} - ${errorText}`, 'error')
+          throw new Error(`S3 upload failed for front video: ${s3UploadResponseFront.status}`);
+        }
+        frontVideoS3Key = presignedDataFront.key;
+        logToScreen(`Front video successfully uploaded to S3. Key: ${frontVideoS3Key}`);
+      } else if (frontIdVideoDataUrl) {
+        logToScreen("Front video DataURL existed but failed to convert to Blob.", 'warn');
+      }
+
+      // Upload Back ID Video to S3 if it exists
+      const backVideoBlob = dataURLtoBlob(backIdVideoDataUrl);
+      if (backVideoBlob) {
+        logToScreen("Back video blob created. Requesting S3 pre-signed URL...");
+        const presignedResponseBack = await fetch('/api/generate-s3-upload-url', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ fileType: videoFileType }),
+        });
+        const presignedDataBack = await presignedResponseBack.json();
+
+        if (!presignedResponseBack.ok || !presignedDataBack.success) {
+          throw new Error(presignedDataBack.error || "Failed to get S3 pre-signed URL for back video");
+        }
+        logToScreen(`S3 pre-signed URL obtained for back video. Key: ${presignedDataBack.key}`);
+
+        const formDataBack = new FormData();
+        Object.entries(presignedDataBack.fields).forEach(([key, value]) => {
+          formDataBack.append(key, value);
+        });
+        formDataBack.append("file", backVideoBlob);
+
+        logToScreen("Uploading back video to S3...");
+        const s3UploadResponseBack = await fetch(presignedDataBack.url, {
+          method: 'POST',
+          body: formDataBack,
+        });
+
+        if (!s3UploadResponseBack.ok) {
+          const errorText = await s3UploadResponseBack.text();
+          logToScreen(`S3 Upload Error (Back Video): ${s3UploadResponseBack.status} - ${errorText}`, 'error')
+          throw new Error(`S3 upload failed for back video: ${s3UploadResponseBack.status}`);
+        }
+        backVideoS3Key = presignedDataBack.key;
+        logToScreen(`Back video successfully uploaded to S3. Key: ${backVideoS3Key}`);
+      } else if (backIdVideoDataUrl) {
+        logToScreen("Back video DataURL existed but failed to convert to Blob.", 'warn');
+      }
+
+      // Now save registration with S3 keys
+      logToScreen("Proceeding to save registration data to backend with S3 keys...");
       const regResponse = await fetch('/api/save-registration', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1007,15 +1117,15 @@ export default function UserRegistrationForm() {
           email, 
           password,
           idDetails: combinedIdDetails,
-          frontIdVideo: frontIdVideoDataUrl,
-          backIdVideo: backIdVideoDataUrl
+          frontIdVideoS3Key: frontVideoS3Key, // Send S3 key
+          backIdVideoS3Key: backVideoS3Key    // Send S3 key
         })
       });
       
       const regData = await regResponse.json();
       
       if (regResponse.ok && regData.success) {
-        logToScreen("Registration saved successfully. Now attempting to log in.");
+        logToScreen("Registration saved successfully with S3 keys. Now attempting to log in.");
         
         // Attempt to login the user automatically
         try {
