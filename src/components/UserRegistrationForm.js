@@ -334,7 +334,31 @@ export default function UserRegistrationForm() {
         if ((step === "camera" || step === "cameraBack") && window.MediaRecorder) {
           recordedChunksRef.current = []; // Clear previous chunks
           try {
-            mediaRecorderRef.current = new MediaRecorder(stream, { mimeType: 'video/webm' });
+            const MimeTypesToTry = [
+              'video/webm;codecs=vp9',
+              'video/webm;codecs=vp8',
+              'video/webm',
+              'video/mp4;codecs=h264', // May not be widely supported for recording
+              'video/mp4'             // May not be widely supported for recording
+            ];
+            let supportedMimeType = '';
+
+            for (const mimeType of MimeTypesToTry) {
+              if (MediaRecorder.isTypeSupported(mimeType)) {
+                supportedMimeType = mimeType;
+                logToScreen(`Supported MIME type found: ${supportedMimeType}`);
+                break;
+              }
+              logToScreen(`MIME type not supported: ${mimeType}`, 'warn');
+            }
+
+            if (!supportedMimeType) {
+              logToScreen("No supported MIME type found for MediaRecorder. Video recording will be disabled.", 'error');
+              mediaRecorderRef.current = null;
+              return; // Exit if no supported MIME type
+            }
+
+            mediaRecorderRef.current = new MediaRecorder(stream, { mimeType: supportedMimeType });
             mediaRecorderRef.current.ondataavailable = (event) => {
               if (event.data.size > 0) {
                 recordedChunksRef.current.push(event.data);
@@ -353,7 +377,7 @@ export default function UserRegistrationForm() {
               logToScreen(`MediaRecorder error for ${step}: ` + event.error, 'error');
             };
             mediaRecorderRef.current.start();
-            logToScreen(`MediaRecorder.start() called for ${step}. Current state: ${mediaRecorderRef.current.state}`);
+            logToScreen(`MediaRecorder.start() called for ${step} with MIME type ${supportedMimeType}. Current state: ${mediaRecorderRef.current.state}`);
           } catch (e) {
             logToScreen("Error initializing MediaRecorder: " + e, 'error');
             mediaRecorderRef.current = null;
