@@ -39,7 +39,7 @@ export default function AdminDashboard() {
   );
 
   return (
-    <div className="p-6 max-w-6xl mx-auto bg-white rounded-xl shadow-md space-y-6">
+    <div className="p-6 max-w-[75%] mx-auto bg-white rounded-xl shadow-md space-y-6">
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-3xl font-bold text-gray-800">Admin Dashboard</h1>
         <button
@@ -87,6 +87,8 @@ export default function AdminDashboard() {
                 <th className="text-left py-3 px-4 uppercase font-semibold text-sm">ID Number</th>
                 <th className="text-left py-3 px-4 uppercase font-semibold text-sm">Date of Birth</th>
                 <th className="text-left py-3 px-4 uppercase font-semibold text-sm">Expiry Date</th>
+                <th className="text-left py-3 px-4 uppercase font-semibold text-sm">Gender</th>
+                <th className="text-left py-3 px-4 uppercase font-semibold text-sm">Status</th>
                 {/* Add more columns as needed */}
               </tr>
             </thead>
@@ -98,6 +100,8 @@ export default function AdminDashboard() {
                   <td className="text-left py-3 px-4">{user.idDetails?.idNumber || 'N/A'}</td>
                   <td className="text-left py-3 px-4">{user.idDetails?.dateOfBirth || 'N/A'}</td>
                   <td className="text-left py-3 px-4">{user.idDetails?.expiry || 'N/A'}</td>
+                  <td className="text-left py-3 px-4">{user.idDetails?.gender || 'N/A'}</td>
+                  <td className="text-left py-3 px-4">{user.status || 'N/A'}</td>
                   {/* Render more user details */}
                 </tr>
               ))}
