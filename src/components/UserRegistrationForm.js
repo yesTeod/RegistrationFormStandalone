@@ -1021,9 +1021,6 @@ export default function UserRegistrationForm() {
                 <p>
                   <strong>Date of Birth:</strong> {combinedIdDetails.dateOfBirth}
                 </p>
-                <p>
-                  <strong>Address:</strong> {combinedIdDetails.address}
-                </p>
               </div>
             ) : isExtracting ? (
               <div className="flex flex-col items-center justify-center">
@@ -1136,10 +1133,10 @@ export default function UserRegistrationForm() {
         <div className="text-center space-y-6">
           <div className="text-6xl mb-4">👋</div>
           <h2 className="text-2xl font-semibold text-gray-800">
-            Welcome Back!
+            Welcome
           </h2>
           <p className="text-gray-600">
-            You are already registered in our system.
+            You registered in our system.
           </p>
           
           {userData && (
