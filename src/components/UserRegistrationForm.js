@@ -1162,8 +1162,12 @@ export default function UserRegistrationForm() {
         alert("Error saving registration: " + (regData.error || "Unknown error"));
       }
     } catch (error) {
-      logToScreen("Error saving registration: " + error, 'error');
-      alert("Network error, please try again");
+      logToScreen("Error during S3 upload or saving registration: " + error.toString(), 'error');
+      logToScreen("Full error object: " + JSON.stringify(error, Object.getOwnPropertyNames(error)), 'error');
+      setIsUploading(false);
+      alert("A network error occurred, or the system was unable to save your registration. Please check your connection and try again. If the problem persists, note any error messages from the on-screen log.");
+    } finally {
+      setIsUploading(false); // Ensure this is always called
     }
   };
 
