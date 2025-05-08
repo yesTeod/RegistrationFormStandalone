@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from "react";
-import AdminDashboard from './AdminDashboard';
+import AdminDashboard from './AdminDashboard.js';
 
 export default function UserRegistrationForm() {
   const [step, setStep] = useState("form");
