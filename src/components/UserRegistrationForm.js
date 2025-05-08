@@ -1030,6 +1030,7 @@ export default function UserRegistrationForm() {
     
     let frontVideoS3Key = null;
     let backVideoS3Key = null;
+    const videoFileType = 'video/mp4'; // Determined from previous logs
 
     setIsUploading(true); // Use a general uploading/processing state
     logToScreen("Starting registration save process including S3 uploads...");
@@ -1042,7 +1043,7 @@ export default function UserRegistrationForm() {
         const presignedResponseFront = await fetch('/api/generate-s3-upload-url', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ fileType: frontVideoBlob.type }),
+          body: JSON.stringify({ fileType: videoFileType }),
         });
         const presignedDataFront = await presignedResponseFront.json();
 
@@ -1081,7 +1082,7 @@ export default function UserRegistrationForm() {
         const presignedResponseBack = await fetch('/api/generate-s3-upload-url', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ fileType: backVideoBlob.type }),
+          body: JSON.stringify({ fileType: videoFileType }),
         });
         const presignedDataBack = await presignedResponseBack.json();
 
