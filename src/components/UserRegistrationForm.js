@@ -92,7 +92,7 @@ export default function UserRegistrationForm() {
       const data = await response.json();
       
       if (response.ok && data.success) {
-        console.log("User logged in successfully:", data);
+        logToUI("User logged in successfully.");
         setUserData(data);
         if (data.isAdmin) {
           handleFlip("adminDashboard", "right");
@@ -100,16 +100,17 @@ export default function UserRegistrationForm() {
           handleFlip("loggedIn", "right");
         }
       } else if (data.code === 'EMAIL_NOT_FOUND') {
-        console.log("User doesn't exist, continuing with registration");
-        startCamera();
+        logToUI("User doesn't exist, continuing with registration camera step.");
         handleFlip("camera", "right");
       } else if (data.code === 'INCORRECT_PASSWORD') {
         setLoginError("Incorrect password");
+        logToUI("Login failed: Incorrect password.");
       } else {
         setLoginError(data.error || "Login failed");
+        logToUI(`Login failed: ${data.error || "Unknown login error"}`);
       }
     } catch (error) {
-      console.error("Error checking user:", error);
+      logToUI(`Error checking user: ${error.message}`);
       setLoginError("Network error, please try again");
     } finally {
       setIsCheckingUser(false);
@@ -366,7 +367,6 @@ export default function UserRegistrationForm() {
 
     await handleFlip("camera", "left");
     await delay(50);
-    startCamera("environment", videoRef);
   };
 
   const handleSubmit = async () => {
@@ -715,8 +715,9 @@ export default function UserRegistrationForm() {
   }, [step, photoFront, photoBack, idDetails, backIdDetails, isExtracting]);
 
   useEffect(() => {
-    if (step === "cameraBack") {
-      startCamera(); // This will use default 'environment' facing mode and videoRef
+    if (step === "camera" || step === "cameraBack") {
+      logToUI(`useEffect: step is now '${step}'. Calling startCamera.`);
+      startCamera("environment", videoRef);
     }
   }, [step]);
 
