@@ -37,6 +37,7 @@ export default function UserRegistrationForm() {
   const [userData, setUserData] = useState(null);
   const [frontIdVideoDataUrl, setFrontIdVideoDataUrl] = useState(null);
   const [backIdVideoDataUrl, setBackIdVideoDataUrl] = useState(null);
+  const [debugMessages, setDebugMessages] = useState([]);
 
   const videoRef = useRef(null);
   const faceVideoRef = useRef(null);
@@ -51,6 +52,11 @@ export default function UserRegistrationForm() {
   const recordedChunksRef = useRef([]);
 
   const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+  const addDebugMessage = (message) => {
+    console.log("DEBUG:", message);
+    setDebugMessages(prev => [message, ...prev.slice(0, 4)]);
+  };
 
   const blobToDataURL = (blob) => {
     return new Promise((resolve, reject) => {
@@ -119,20 +125,21 @@ export default function UserRegistrationForm() {
     if (mediaRecorderRef.current && mediaRecorderRef.current.state === "recording") {
       mediaRecorderRef.current.onstop = async () => {
         const videoBlob = new Blob(recordedChunksRef.current, { type: 'video/webm' });
+        addDebugMessage(`Front ID stop: blob ${videoBlob.size}, chunks ${recordedChunksRef.current.length}`);
         if (videoBlob.size > 0) {
           try {
             const videoDataUrl = await blobToDataURL(videoBlob);
             setFrontIdVideoDataUrl(videoDataUrl);
-            console.log("Front ID video recorded and set");
+            addDebugMessage(`Front vid URL: ${videoDataUrl ? 'Set' : 'NULL'}`);
           } catch (error) {
             console.error("Error converting front ID video blob to DataURL:", error);
+            addDebugMessage('Front vid URL: Convert ERR');
             setFrontIdVideoDataUrl(null);
           }
         }
         recordedChunksRef.current = [];
-        mediaRecorderRef.current = null; // Clear the ref after processing
+        mediaRecorderRef.current = null;
 
-        // Proceed with photo capture after video is processed
         if (videoRef.current && canvasRef.current) {
           const video = videoRef.current;
           const canvas = canvasRef.current;
@@ -143,12 +150,11 @@ export default function UserRegistrationForm() {
           const imageData = canvas.toDataURL("image/png");
           setPhotoFront(imageData);
         }
-        stopMediaTracks(); // Stop only tracks, recorder handled
+        stopMediaTracks();
         handleFlip("cameraBack", "right");
       };
       mediaRecorderRef.current.stop();
     } else {
-      // Fallback if MediaRecorder wasn't active (e.g., browser incompatibility)
       if (videoRef.current && canvasRef.current) {
         const video = videoRef.current;
         const canvas = canvasRef.current;
@@ -159,7 +165,7 @@ export default function UserRegistrationForm() {
         const imageData = canvas.toDataURL("image/png");
         setPhotoFront(imageData);
       }
-      stopMediaTracks(); // Stop only tracks
+      stopMediaTracks();
       handleFlip("cameraBack", "right");
     }
   };
@@ -168,20 +174,21 @@ export default function UserRegistrationForm() {
     if (mediaRecorderRef.current && mediaRecorderRef.current.state === "recording") {
       mediaRecorderRef.current.onstop = async () => {
         const videoBlob = new Blob(recordedChunksRef.current, { type: 'video/webm' });
+        addDebugMessage(`Back ID stop: blob ${videoBlob.size}, chunks ${recordedChunksRef.current.length}`);
         if (videoBlob.size > 0) {
           try {
             const videoDataUrl = await blobToDataURL(videoBlob);
             setBackIdVideoDataUrl(videoDataUrl);
-            console.log("Back ID video recorded and set");
+            addDebugMessage(`Back vid URL: ${videoDataUrl ? 'Set' : 'NULL'}`);
           } catch (error) {
             console.error("Error converting back ID video blob to DataURL:", error);
+            addDebugMessage('Back vid URL: Convert ERR');
             setBackIdVideoDataUrl(null);
           }
         }
         recordedChunksRef.current = [];
-        mediaRecorderRef.current = null; // Clear the ref after processing
+        mediaRecorderRef.current = null;
 
-        // Proceed with photo capture after video is processed
         if (videoRef.current && canvasRef.current) {
           const video = videoRef.current;
           const canvas = canvasRef.current;
@@ -192,12 +199,11 @@ export default function UserRegistrationForm() {
           const imageData = canvas.toDataURL("image/png");
           setPhotoBack(imageData);
         }
-        stopMediaTracks(); // Stop only tracks, recorder handled
+        stopMediaTracks();
         handleFlip("completed", "right");
       };
       mediaRecorderRef.current.stop();
     } else {
-      // Fallback if MediaRecorder wasn't active
       if (videoRef.current && canvasRef.current) {
         const video = videoRef.current;
         const canvas = canvasRef.current;
@@ -208,7 +214,7 @@ export default function UserRegistrationForm() {
         const imageData = canvas.toDataURL("image/png");
         setPhotoBack(imageData);
       }
-      stopMediaTracks(); // Stop only tracks
+      stopMediaTracks();
       handleFlip("completed", "right");
     }
   };
@@ -217,7 +223,6 @@ export default function UserRegistrationForm() {
     const file = event.target.files[0];
     if (!file) return;
 
-    // If a file is uploaded, no video is recorded via camera for this side.
     setFrontIdVideoDataUrl(null);
     console.log("Front ID video set to null due to file upload.");
 
@@ -240,7 +245,6 @@ export default function UserRegistrationForm() {
     const file = event.target.files[0];
     if (!file) return;
 
-    // If a file is uploaded, no video is recorded via camera for this side.
     setBackIdVideoDataUrl(null);
     console.log("Back ID video set to null due to file upload.");
 
@@ -294,31 +298,32 @@ export default function UserRegistrationForm() {
         setCameraAvailable(true);
         setCameraStatus("active");
 
-        // Start MediaRecorder if this is for ID capture (not face verification)
         if ((step === "camera" || step === "cameraBack") && window.MediaRecorder) {
-          recordedChunksRef.current = []; // Clear previous chunks
+          recordedChunksRef.current = [];
           mediaRecorderRef.current = new MediaRecorder(stream, { mimeType: 'video/webm' });
           mediaRecorderRef.current.ondataavailable = (event) => {
             if (event.data.size > 0) {
               recordedChunksRef.current.push(event.data);
+              addDebugMessage(`Video chunk: ${event.data.size} bytes`);
             }
           };
           mediaRecorderRef.current.start();
-          console.log("MediaRecorder started for", step);
+          addDebugMessage(`Recorder started for ${step}`);
         }
       })
       .catch(() => {
         setCameraAvailable(false);
         setCameraStatus("error");
+        addDebugMessage('Camera start error');
         setMockMode(false);
       });
   };
 
   const stopCamera = () => {
     if (mediaRecorderRef.current && mediaRecorderRef.current.state === "recording") {
-      mediaRecorderRef.current.onstop = null; // Remove any existing onstop handler
+      mediaRecorderRef.current.onstop = null;
       mediaRecorderRef.current.stop();
-      recordedChunksRef.current = []; // Clear chunks as we are not saving this video
+      recordedChunksRef.current = [];
       console.log("MediaRecorder stopped by stopCamera");
     }
     mediaRecorderRef.current = null;
@@ -330,7 +335,6 @@ export default function UserRegistrationForm() {
     }
   };
 
-  // New function to only stop media tracks, without affecting MediaRecorder state
   const stopMediaTracks = () => {
     const stream = streamRef.current;
     if (stream) {
@@ -534,20 +538,18 @@ export default function UserRegistrationForm() {
   }, [step, livenessCheckActive, faceDetectionPaused, liveChallengeStep, blinked]);
 
   const verifyFace = async () => {
-    // Start liveness verification first
     if (!livenessVerified && !livenessCheckActive) {
       startLivenessCheck();
       return;
     }
     
-    // Only proceed with face verification if liveness is verified
     if (!livenessVerified) {
       return;
     }
     
     setVerifying(true);
     setShowRetryOptions(false);
-    setFaceDetectionPaused(true); // Pause detection during verification
+    setFaceDetectionPaused(true);
     
     try {
       const resp = await fetch('/api/verify-face', {
@@ -557,7 +559,6 @@ export default function UserRegistrationForm() {
       });
       
       if (!resp.ok) {
-        // Handle HTTP error responses (e.g., 400 Bad Request)
         const errorData = await resp.json().catch(() => ({ error: 'Unknown error' }));
         console.error("Face verification failed:", resp.status, errorData);
         setFaceVerified(false);
@@ -572,9 +573,7 @@ export default function UserRegistrationForm() {
       if (!data.match) {
         setVerificationAttempts(prev => prev + 1);
         
-        // If we've reached maximum verification attempts, reject the registration
         if (verificationAttempts >= 2) {
-          // Short delay to show the failure message before transitioning
           setTimeout(() => {
             handleFlip("registrationFailed", "right");
           }, 1500);
@@ -594,14 +593,11 @@ export default function UserRegistrationForm() {
 
   const handleVerificationComplete = () => {
     if (faceVerified) {
-      // Save the registration with ID details
       saveRegistration();
     } else {
-      // If face verification failed definitively, show the failure screen
       if (verificationAttempts >= 3) {
         handleFlip("registrationFailed", "right");
       } else {
-        // Otherwise go back to ID step
         handleFlip("completed", "left");
       }
     }
@@ -702,7 +698,7 @@ export default function UserRegistrationForm() {
 
   useEffect(() => {
     if (step === "cameraBack") {
-      startCamera(); // This will use default 'environment' facing mode and videoRef
+      startCamera();
     }
   }, [step]);
 
@@ -904,6 +900,8 @@ export default function UserRegistrationForm() {
       console.error("Cannot save registration - missing required data");
       return;
     }
+
+    addDebugMessage(`Save attempt: F ID: ${frontIdVideoDataUrl ? 'Yes' : 'No'}, B ID: ${backIdVideoDataUrl ? 'Yes' : 'No'}`);
     
     try {
       const regResponse = await fetch('/api/save-registration', {
@@ -923,7 +921,6 @@ export default function UserRegistrationForm() {
       if (regResponse.ok && regData.success) {
         console.log("Registration saved successfully. Now attempting to log in.");
         
-        // Attempt to login the user automatically
         try {
           const loginResponse = await fetch('/api/login', {
             method: 'POST',
@@ -934,21 +931,21 @@ export default function UserRegistrationForm() {
 
           if (loginResponse.ok && loginData.success) {
             console.log("Auto-login after registration successful:", loginData);
-            setUserData(loginData); // Use login data to set the user session
+            setUserData(loginData);
             if (loginData.isAdmin) {
               handleFlip("adminDashboard", "right");
             } else {
-              handleFlip("loggedIn", "right"); // Go to the loggedIn step (dashboard)
+              handleFlip("loggedIn", "right");
             }
           } else {
             console.error("Auto-login after registration failed:", loginData.error || "Unknown error");
             alert("Registration was successful, but auto-login failed. Please try logging in manually.");
-            handleFlip("form", "left"); // Go back to form if auto-login fails
+            handleFlip("form", "left");
           }
         } catch (loginError) {
           console.error("Error during auto-login after registration:", loginError);
           alert("Registration was successful, but an error occurred during auto-login. Please try logging in manually.");
-          handleFlip("form", "left"); // Go back to form if auto-login fails
+          handleFlip("form", "left");
         }
 
       } else if (regData.code === 'USER_EXISTS') {
@@ -1285,37 +1282,29 @@ export default function UserRegistrationForm() {
                 
                 {userData.idDetails && (
                   <>
-                    {/* Given Name from idDetails */}
                     {userData.idDetails.name && userData.idDetails.name !== "Not found" &&
                       <p><span className="font-medium">Given Name:</span> {userData.idDetails.name}</p>
                     }
 
-                    {/* Surname from idDetails (using fatherName field) */}
                     {userData.idDetails.fatherName && userData.idDetails.fatherName !== "Not found" &&
                       <p><span className="font-medium">Surname:</span> {userData.idDetails.fatherName}</p>
                     }
 
-                    {/* ID Number from idDetails */}
                     {userData.idDetails.idNumber && userData.idDetails.idNumber !== "Not found" &&
                       <p><span className="font-medium">ID Number:</span> {userData.idDetails.idNumber}</p>}
 
-                    {/* Date of Birth from idDetails */}
                     {userData.idDetails.dateOfBirth && userData.idDetails.dateOfBirth !== "Not found" &&
                       <p><span className="font-medium">Date of Birth:</span> {userData.idDetails.dateOfBirth}</p>}
 
-                    {/* Expiry Date from idDetails */}
                     {userData.idDetails.expiry && userData.idDetails.expiry !== "Not found" &&
                       <p><span className="font-medium">Expiry Date:</span> {userData.idDetails.expiry}</p>}
 
-                    {/* Nationality from idDetails */}
                     {userData.idDetails.nationality && userData.idDetails.nationality !== "Not found" &&
                       <p><span className="font-medium">Nationality:</span> {userData.idDetails.nationality}</p>}
 
-                    {/* Gender from idDetails */}
                     {userData.idDetails.gender && userData.idDetails.gender !== "Not found" &&
                       <p><span className="font-medium">Gender:</span> {userData.idDetails.gender}</p>}
 
-                    {/* Issue Date from idDetails */}
                     {userData.idDetails.issueDate && userData.idDetails.issueDate !== "Not found" &&
                       <p><span className="font-medium">Issue Date:</span> {userData.idDetails.issueDate}</p>}
                   </>
@@ -1341,6 +1330,16 @@ export default function UserRegistrationForm() {
       
       <canvas ref={canvasRef} className="hidden" />
       <input type="file" ref={fileInputRef} accept="image/*" onChange={handleFileUpload} className="hidden" />
+
+      {/* On-screen debug messages for mobile testing */}
+      {debugMessages.length > 0 && (
+        <div className="mt-4 p-2 bg-gray-800 text-white text-xs rounded-lg opacity-75 fixed bottom-2 right-2 max-w-xs z-50">
+          <h4 className="font-bold mb-1">Debug Log:</h4>
+          {debugMessages.map((msg, index) => (
+            <p key={index} className="break-all">{msg}</p>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
