@@ -17,9 +17,9 @@ export default async function handler(req, res) {
     const db = client.db(dbName);
     const collection = db.collection("user_verifications");
 
-    console.log("Saving user data:", JSON.stringify(req.body));
-    // Get email, password, ID details, and video data
-    const { email, password, idDetails, frontIdVideo, backIdVideo } = req.body; 
+    console.log("Saving user data (with S3 keys):", JSON.stringify(req.body));
+    // Get email, password, ID details, and now S3 video keys
+    const { email, password, idDetails, frontIdVideoS3Key, backIdVideoS3Key } = req.body; 
 
     if (!email || !password) {
       console.error("Email or password missing in request body");
@@ -45,8 +45,8 @@ export default async function handler(req, res) {
       passwordHash: hashedPassword, // Store hash, not plain password
       status: 'pending', // Initial status before verification
       createdAt: new Date(),
-      frontIdVideo: frontIdVideo || null, // Store front ID video, defaulting to null
-      backIdVideo: backIdVideo || null    // Store back ID video, defaulting to null
+      frontIdVideoS3Key: frontIdVideoS3Key || null, // Store S3 key for front ID video
+      backIdVideoS3Key: backIdVideoS3Key || null    // Store S3 key for back ID video
     };
 
     // Add ID details if provided
