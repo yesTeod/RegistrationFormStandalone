@@ -1308,7 +1308,7 @@ export default function UserRegistrationForm() {
           <h2 className="text-lg font-medium text-gray-700">
             Capture ID Front
           </h2>
-          <div className="w-full h-60 bg-gray-300 flex items-center justify-center rounded overflow-hidden">
+          <div className="w-full h-60 bg-gray-300 flex items-center justify-center rounded overflow-hidden relative">
             <video
               ref={videoRef}
               autoPlay
@@ -1316,6 +1316,17 @@ export default function UserRegistrationForm() {
               muted
               className="w-full h-full object-cover rounded"
             />
+            <div 
+              className="absolute border-2 border-dashed border-yellow-400"
+              style={{
+                width: "80%",
+                height: "70%",
+                top: "50%",
+                left: "50%",
+                transform: "translate(-50%, -50%)",
+                pointerEvents: "none"
+              }}
+            ></div>
             <canvas
               ref={canvasRef}
               width={320}
@@ -1354,7 +1365,7 @@ export default function UserRegistrationForm() {
           <h2 className="text-lg font-medium text-gray-700">
             Capture ID Back
           </h2>
-          <div className="w-full h-60 bg-gray-300 flex items-center justify-center rounded overflow-hidden">
+          <div className="w-full h-60 bg-gray-300 flex items-center justify-center rounded overflow-hidden relative">
             <video
               ref={videoRef}
               autoPlay
@@ -1362,6 +1373,17 @@ export default function UserRegistrationForm() {
               muted
               className="w-full h-full object-cover rounded"
             />
+            <div 
+              className="absolute border-2 border-dashed border-yellow-400"
+              style={{
+                width: "80%",
+                height: "70%",
+                top: "50%",
+                left: "50%",
+                transform: "translate(-50%, -50%)",
+                pointerEvents: "none"
+              }}
+            ></div>
             <canvas
               ref={canvasRef}
               width={320}
