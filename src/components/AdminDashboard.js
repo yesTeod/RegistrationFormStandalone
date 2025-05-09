@@ -262,6 +262,12 @@ export default function AdminDashboard() {
                             <h4 className="font-semibold text-gray-700 mb-1">Nationality:</h4>
                             <p className="text-gray-600">{user.idDetails?.nationality || 'N/A'}</p>
                           </div>
+                          {user.idDetails?.personalNumber && user.idDetails?.personalNumber !== 'Not found' && user.idDetails?.personalNumber !== 'N/A' && (
+                            <div>
+                              <h4 className="font-semibold text-gray-700 mb-1">Personal No:</h4>
+                              <p className="text-gray-600">{user.idDetails.personalNumber}</p>
+                            </div>
+                          )}
                         </div>
                       </td>
                     </tr>
