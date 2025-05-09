@@ -9,6 +9,7 @@ export default function AdminDashboard() {
   const [currentVideoUrl, setCurrentVideoUrl] = useState('');
   const [isVideoLoadingModal, setIsVideoLoadingModal] = useState(false);
   const [videoModalError, setVideoModalError] = useState(null);
+  const [approvingUserId, setApprovingUserId] = useState(null);
 
   useEffect(() => {
     const fetchUsers = async () => {
@@ -70,6 +71,37 @@ export default function AdminDashboard() {
     setCurrentVideoUrl('');
   };
 
+  const handleApproveUser = async (emailToApprove) => {
+    if (!emailToApprove) return;
+    setApprovingUserId(emailToApprove);
+
+    try {
+      const response = await fetch('/api/admin/approve-user', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: emailToApprove }),
+      });
+      const data = await response.json();
+
+      if (!response.ok || !data.success) {
+        throw new Error(data.error || 'Failed to approve user');
+      }
+
+      setUsers(currentUsers => 
+        currentUsers.map(user => 
+          user.email === emailToApprove ? { ...user, status: 'approved' } : user
+        )
+      );
+      alert(`User ${emailToApprove} approved successfully.`);
+
+    } catch (err) {
+      console.error("Error approving user:", err);
+      alert(`Error approving user: ${err.message}`);
+    } finally {
+      setApprovingUserId(null);
+    }
+  };
+
   return (
     <div className="p-6 max-w-[75%] mx-auto bg-white rounded-xl shadow-md space-y-6">
       <div className="flex justify-between items-center mb-6">
@@ -123,6 +155,7 @@ export default function AdminDashboard() {
                 <th className="text-left py-3 px-4 uppercase font-semibold text-sm">Status</th>
                 <th className="text-left py-3 px-4 uppercase font-semibold text-sm">Front ID Video</th>
                 <th className="text-left py-3 px-4 uppercase font-semibold text-sm">Back ID Video</th>
+                <th className="text-left py-3 px-4 uppercase font-semibold text-sm">Actions</th>
               </tr>
             </thead>
             <tbody className="text-gray-700">
@@ -154,6 +187,24 @@ export default function AdminDashboard() {
                         View Back Video
                       </button>
                     ) : 'N/A'}
+                  </td>
+                  <td className="text-left py-3 px-4">
+                    {user.status !== 'approved' && (
+                      <button
+                        onClick={() => handleApproveUser(user.email)}
+                        disabled={approvingUserId === user.email}
+                        className={`px-3 py-1 text-xs rounded transition-colors 
+                          ${approvingUserId === user.email 
+                            ? 'bg-gray-400 text-gray-700 cursor-not-allowed' 
+                            : 'bg-green-500 hover:bg-green-600 text-white'}
+                        `}
+                      >
+                        {approvingUserId === user.email ? 'Approving...' : 'Approve'}
+                      </button>
+                    )}
+                    {user.status === 'approved' && (
+                      <span className="text-xs text-green-600 font-semibold">Approved</span>
+                    )}
                   </td>
                 </tr>
               ))}
