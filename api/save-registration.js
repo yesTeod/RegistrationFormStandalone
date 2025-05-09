@@ -37,11 +37,10 @@ export default async function handler(req, res) {
       },
       $setOnInsert: {
         email: email.toLowerCase(), // Ensure email is stored consistently
-        createdAt: new Date(),
-        // S3 keys (frontIdVideoS3Key, backIdVideoS3Key) will be/were handled by /api/save-video-keys
-        // If this is an insert and they weren't set by save-video-keys, they will be absent or can be defaulted to null if schema requires
-        frontIdVideoS3Key: null, // Default if inserting and not previously set
-        backIdVideoS3Key: null   // Default if inserting and not previously set
+        createdAt: new Date()
+        // S3 keys (frontIdVideoS3Key, backIdVideoS3Key) are now solely handled by /api/save-video-keys
+        // frontIdVideoS3Key: null, // Removed
+        // backIdVideoS3Key: null   // Removed
       }
     };
 
