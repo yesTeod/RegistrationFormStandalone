@@ -244,47 +244,6 @@ export default function UserRegistrationForm() {
     }
   };
 
-  const handleFileUpload = async (event) => {
-    const file = event.target.files[0];
-    if (!file) return;
-
-    setFrontIdVideoDataUrl(null);
-
-    try {
-      setIsUploading(true);
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        setPhotoFront(e.target.result);
-        handleFlip("cameraBack", "right");
-      };
-      reader.readAsDataURL(file);
-    } catch (error) {
-    } finally {
-      setIsUploading(false);
-    }
-  };
-
-  const handleBackFileUpload = async (event) => {
-    const file = event.target.files[0];
-    if (!file) return;
-
-    // If a file is uploaded, no video is recorded via camera for this side.
-    setBackIdVideoDataUrl(null);
-
-    try {
-      setIsUploading(true);
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        setPhotoBack(e.target.result);
-        handleFlip("completed", "right");
-      };
-      reader.readAsDataURL(file);
-    } catch (error) {
-    } finally {
-      setIsUploading(false);
-    }
-  };
-
   const handleFlip = async (nextStep, direction = "right") => {
     if (isFlipping) return;
     setIsFlipping(true);
@@ -1474,21 +1433,6 @@ export default function UserRegistrationForm() {
             >
               Capture Front
             </button>
-
-            <input
-              type="file"
-              accept="image/*"
-              ref={fileInputRef}
-              onChange={handleFileUpload}
-              className="hidden"
-            />
-            <button
-              onClick={() => fileInputRef.current.click()}
-              disabled={isUploading}
-              className="bg-blue-500 hover:bg-blue-400 text-white px-4 py-2 rounded-full shadow-md"
-            >
-              {isUploading ? "Processing..." : "Upload Image"}
-            </button>
           </div>
         </div>
       )}
@@ -1538,21 +1482,6 @@ export default function UserRegistrationForm() {
               }`}
             >
               Capture Back
-            </button>
-
-            <input
-              type="file"
-              accept="image/*"
-              ref={fileInputRef}
-              onChange={handleBackFileUpload}
-              className="hidden"
-            />
-            <button
-              onClick={() => fileInputRef.current.click()}
-              disabled={isUploading}
-              className="bg-blue-500 hover:bg-blue-400 text-white px-4 py-2 rounded-full shadow-md"
-            >
-              {isUploading ? "Processing..." : "Upload Image"}
             </button>
           </div>
         </div>
@@ -1671,6 +1600,7 @@ export default function UserRegistrationForm() {
                 setBackIdVideoDataUrl(null);
                 retakePhoto();
               }}
+              disabled={isUploading || isFlipping || isExtracting}
               className="px-5 py-2 bg-gray-800 text-white hover:bg-gray-700 transition shadow-md"
             >
               Retake Photos
@@ -1802,7 +1732,6 @@ export default function UserRegistrationForm() {
       )}
       
       <canvas ref={canvasRef} className="hidden" />
-      <input type="file" ref={fileInputRef} accept="image/*" onChange={handleFileUpload} className="hidden" />
     </div>
   );
 }
