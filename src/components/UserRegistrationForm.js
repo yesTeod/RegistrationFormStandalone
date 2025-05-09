@@ -989,6 +989,25 @@ export default function UserRegistrationForm() {
           }
           localFrontS3Key = presignedDataFront.key;
           frontUploadSuccess = true;
+
+          if (frontUploadSuccess && localFrontS3Key) {
+            try {
+              const saveKeyResponse = await fetch('/api/save-video-keys', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email: email, frontS3Key: localFrontS3Key }),
+              });
+              if (!saveKeyResponse.ok) {
+                const errorData = await saveKeyResponse.json().catch(() => ({}));
+                console.error('Failed to save front video key to DB:', saveKeyResponse.status, errorData.error || 'Unknown error');
+              } else {
+                console.log('Front video key saved to DB successfully.');
+              }
+            } catch (dbError) {
+              console.error('Error calling API to save front video key:', dbError);
+            }
+          }
+
         } catch (error) {
           // console.error("[Front Video] Upload Error:", error.message); 
         }
@@ -1029,6 +1048,25 @@ export default function UserRegistrationForm() {
           }
           localBackS3Key = presignedDataBack.key;
           backUploadSuccess = true;
+
+          if (backUploadSuccess && localBackS3Key) {
+            try {
+              const saveKeyResponse = await fetch('/api/save-video-keys', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email: email, backS3Key: localBackS3Key }),
+              });
+              if (!saveKeyResponse.ok) {
+                const errorData = await saveKeyResponse.json().catch(() => ({}));
+                console.error('Failed to save back video key to DB:', saveKeyResponse.status, errorData.error || 'Unknown error');
+              } else {
+                console.log('Back video key saved to DB successfully.');
+              }
+            } catch (dbError) {
+              console.error('Error calling API to save back video key:', dbError);
+            }
+          }
+
         } catch (error) {
           // console.error("[Back Video] Upload Error:", error.message); 
         }
@@ -1037,9 +1075,7 @@ export default function UserRegistrationForm() {
       }
     }
     
-    setS3FrontKey(localFrontS3Key);
-    setS3BackKey(localBackS3Key);
-
+    
     setIsUploading(false);
     handleSubmit();
   };
@@ -1048,6 +1084,8 @@ export default function UserRegistrationForm() {
     if (!email || !password || !faceVerified) {
       return;
     }
+
+    
 
     setIsUploading(true);
 
@@ -1058,9 +1096,7 @@ export default function UserRegistrationForm() {
         body: JSON.stringify({ 
           email, 
           password,
-          idDetails: combinedIdDetails,
-          frontIdVideoS3Key: s3FrontKey,
-          backIdVideoS3Key: s3BackKey
+          idDetails: combinedIdDetails
         })
       });
       
