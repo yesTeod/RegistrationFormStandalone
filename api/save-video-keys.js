@@ -40,7 +40,10 @@ export default async function handler(req, res) {
     return res.status(405).json({ success: false, error: `Method ${req.method} Not Allowed` });
   }
 
+  console.log("[API /api/save-video-keys] Received request. Body:", JSON.stringify(req.body));
+
   if (!uri || !dbName) {
+    console.error("[API /api/save-video-keys] Server configuration error: Database URI or Name not set.");
     return res.status(500).json({ success: false, error: "Server configuration error: Database URI or Name not set." });
   }
 
@@ -51,6 +54,7 @@ export default async function handler(req, res) {
     const { frontS3Key, backS3Key, email } = req.body;
 
     if (!email) {
+      console.error("[API /api/save-video-keys] Email is required in request body.");
       return res.status(400).json({ success: false, error: "Email is required to save/update video keys." });
     }
 
@@ -74,13 +78,15 @@ export default async function handler(req, res) {
       updateData.$set.backIdVideoS3Key = backS3Key;
     }
 
+    console.log("[API /api/save-video-keys] Attempting MongoDB update for email:", email, "With data:", JSON.stringify(updateData));
+
     const result = await collection.updateOne(
       { email: email.toLowerCase() }, // Match email case-insensitively for robustness
       updateData,
       { upsert: true } 
     );
 
-    console.log("[API /api/save-video-keys] MongoDB updateOne result:", result);
+    console.log("[API /api/save-video-keys] MongoDB updateOne result for email:", email, "Result:", JSON.stringify(result));
 
     if (result.acknowledged) {
       let message = "Video S3 keys processed.";
