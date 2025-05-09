@@ -944,113 +944,92 @@ export default function UserRegistrationForm() {
     );
   };
 
-  const handleDirectS3Upload = async () => {
-    let frontUploadSuccess = false;
-    let backUploadSuccess = false;
-    let localFrontS3Key = null;
-    let localBackS3Key = null;
+  const processVideoForS3 = async (videoDataUrl, idSideForAPI, emailForAPI) => {
+    if (!videoDataUrl) {
+      console.log(`[UserRegForm] No video data URL provided for ${idSideForAPI}, skipping.`);
+      return { success: false, s3Key: null };
+    }
+    const videoBlob = dataURLtoBlob(videoDataUrl);
+    if (!videoBlob) {
+      console.warn(`[UserRegForm] Failed to convert DataURL to Blob for ${idSideForAPI}.`);
+      return { success: false, s3Key: null };
+    }
 
+    try {
+      const apiUrl = '/api/generate-s3-upload-url';
+      const payload = {
+        fileType: videoBlob.type,
+        email: emailForAPI,
+        idSide: idSideForAPI
+      };
+      console.log(`[UserRegForm] Requesting S3 URL for ${idSideForAPI} ID. Payload:`, JSON.stringify(payload));
+
+      const response = await fetch(apiUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+
+      if (!response.ok) {
+        let errorDetail = `HTTP status ${response.status}`;
+        try { const errorJson = await response.json(); errorDetail = errorJson.error || JSON.stringify(errorJson); }
+        catch (e) { errorDetail = (await response.text()) || errorDetail; }
+        throw new Error(`Failed to get S3 pre-signed URL (${idSideForAPI}): ${errorDetail}`);
+      }
+
+      const presignedData = await response.json();
+      if (!presignedData.success || !presignedData.url || !presignedData.fields || !presignedData.key) {
+        throw new Error(presignedData.error || `Invalid data from pre-signed URL API (${idSideForAPI})`);
+      }
+
+      const formData = new FormData();
+      Object.entries(presignedData.fields).forEach(([key, value]) => formData.append(key, value));
+      formData.append("file", videoBlob);
+
+      const s3UploadResponse = await fetch(presignedData.url, { method: 'POST', body: formData });
+      if (!s3UploadResponse.ok) {
+        const errorText = await s3UploadResponse.text();
+        throw new Error(`S3 upload failed (${idSideForAPI}): ${s3UploadResponse.status} - ${errorText}`);
+      }
+      console.log(`[UserRegForm] S3 upload successful for ${idSideForAPI}. Key: ${presignedData.key}`);
+      return { success: true, s3Key: presignedData.key };
+
+    } catch (error) {
+      console.error(`[UserRegForm] Error in processVideoForS3 for ${idSideForAPI}:`, error.message, error.stack);
+      return { success: false, s3Key: null };
+    }
+  };
+
+  const handleDirectS3Upload = async () => {
     if (!frontIdVideoDataUrl && !backIdVideoDataUrl) {
       alert("No videos captured or selected to upload.");
       return;
     }
 
     setIsUploading(true);
+    // let frontUploadSuccess = false; // Can be used if we need to track overall success
+    // let backUploadSuccess = false;
 
+    console.log("[UserRegForm] Checking frontIdVideoDataUrl:", frontIdVideoDataUrl ? "Exists" : "Does NOT exist or is null");
     if (frontIdVideoDataUrl) {
-      const frontVideoBlob = dataURLtoBlob(frontIdVideoDataUrl);
-      if (frontVideoBlob) {
-        try {
-          const apiUrl = '/api/generate-s3-upload-url';
-          const payload = { 
-            fileType: frontVideoBlob.type,
-            email: email,
-            idSide: 'front'
-          };
-          console.log("[UserRegForm] Requesting S3 URL for front ID. Payload:", JSON.stringify(payload));
-          const response = await fetch(apiUrl, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload),
-          });
-          if (!response.ok) {
-            let errorDetail = `HTTP status ${response.status}`;
-            try { const errorJson = await response.json(); errorDetail = errorJson.error || JSON.stringify(errorJson); } 
-            catch (e) { errorDetail = (await response.text()) || errorDetail; }
-            throw new Error(`Failed to get S3 pre-signed URL (front): ${errorDetail}`);
-          }
-          const presignedDataFront = await response.json();
-          if (!presignedDataFront.success || !presignedDataFront.url || !presignedDataFront.fields || !presignedDataFront.key) {
-            throw new Error(presignedDataFront.error || "Invalid data from pre-signed URL API (front)");
-          }
-          
-          const formDataFront = new FormData();
-          Object.entries(presignedDataFront.fields).forEach(([key, value]) => formDataFront.append(key, value));
-          formDataFront.append("file", frontVideoBlob);
-          const s3UploadResponseFront = await fetch(presignedDataFront.url, { method: 'POST', body: formDataFront });
-          if (!s3UploadResponseFront.ok) {
-            const errorText = await s3UploadResponseFront.text();
-            throw new Error(`S3 upload failed (front): ${s3UploadResponseFront.status} - ${errorText}`);
-          }
-          localFrontS3Key = presignedDataFront.key;
-          frontUploadSuccess = true;
-
-        } catch (error) {
-          // console.error("[Front Video] Upload Error:", error.message); 
-        }
-      } else {
-        // console.warn("[Front Video] DataURL existed but failed to convert to Blob."); 
-      }
+      console.log("[UserRegForm] Processing front video...");
+      const frontResult = await processVideoForS3(frontIdVideoDataUrl, 'front', email);
+      // frontUploadSuccess = frontResult.success;
+      // console.log("[UserRegForm] Front video processing result:", frontResult);
     }
 
+    console.log("[UserRegForm] Checking backIdVideoDataUrl:", backIdVideoDataUrl ? "Exists" : "Does NOT exist or is null");
     if (backIdVideoDataUrl) {
-      const backVideoBlob = dataURLtoBlob(backIdVideoDataUrl);
-      if (backVideoBlob) {
-        try {
-          const apiUrl = '/api/generate-s3-upload-url';
-          const payload = { 
-            fileType: backVideoBlob.type,
-            email: email,
-            idSide: 'back'
-          };
-          console.log("[UserRegForm] Requesting S3 URL for back ID. Payload:", JSON.stringify(payload));
-          const response = await fetch(apiUrl, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload),
-          });
-          if (!response.ok) {
-            let errorDetail = `HTTP status ${response.status}`;
-            try { const errorJson = await response.json(); errorDetail = errorJson.error || JSON.stringify(errorJson); }
-            catch (e) { errorDetail = (await response.text()) || errorDetail; }
-            throw new Error(`Failed to get S3 pre-signed URL (back): ${errorDetail}`);
-          }
-          const presignedDataBack = await response.json();
-          if (!presignedDataBack.success || !presignedDataBack.url || !presignedDataBack.fields || !presignedDataBack.key) {
-            throw new Error(presignedDataBack.error || "Invalid data from pre-signed URL API (back)");
-          }
-
-          const formDataBack = new FormData();
-          Object.entries(presignedDataBack.fields).forEach(([key, value]) => formDataBack.append(key, value));
-          formDataBack.append("file", backVideoBlob);
-          const s3UploadResponseBack = await fetch(presignedDataBack.url, { method: 'POST', body: formDataBack });
-          if (!s3UploadResponseBack.ok) {
-            const errorText = await s3UploadResponseBack.text();
-            throw new Error(`S3 upload failed (back): ${s3UploadResponseBack.status} - ${errorText}`);
-          }
-          localBackS3Key = presignedDataBack.key;
-          backUploadSuccess = true;
-
-        } catch (error) {
-          // console.error("[Back Video] Upload Error:", error.message); 
-        }
-      } else {
-        // console.warn("[Back Video] DataURL existed but failed to convert to Blob."); 
-      }
+      console.log("[UserRegForm] Processing back video...");
+      const backResult = await processVideoForS3(backIdVideoDataUrl, 'back', email);
+      // backUploadSuccess = backResult.success;
+      // console.log("[UserRegForm] Back video processing result:", backResult);
     }
-    
     
     setIsUploading(false);
+    // The handleSubmit() call will proceed regardless of individual upload successes here,
+    // as the database key registration is handled by the backend API during URL generation.
+    // If a specific upload fails, its key won't be in the DB.
     handleSubmit();
   };
 
