@@ -57,6 +57,10 @@ export default async function handler(req, res) {
       if (idDetails.dateOfBirth && idDetails.dateOfBirth !== "Not found") {
         updateData.$set.dateOfBirth = idDetails.dateOfBirth;
       }
+      // Add personalNumber if available
+      if (idDetails.personalNumber && idDetails.personalNumber !== "Not found") {
+        updateData.$set.personalNumber = idDetails.personalNumber;
+      }
       // Remove address as it's no longer provided by extract-id.js
       // if (idDetails.address && idDetails.address !== "Not found") {
       //   updateData.$set.address = idDetails.address;
