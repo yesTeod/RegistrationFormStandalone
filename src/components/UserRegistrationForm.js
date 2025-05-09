@@ -37,6 +37,8 @@ export default function UserRegistrationForm() {
   const [userData, setUserData] = useState(null);
   const [frontIdVideoDataUrl, setFrontIdVideoDataUrl] = useState(null);
   const [backIdVideoDataUrl, setBackIdVideoDataUrl] = useState(null);
+  const [selfieVideoDataUrl, setSelfieVideoDataUrl] = useState(null);
+  const [faceLivenessVideoDataUrl, setFaceLivenessVideoDataUrl] = useState(null);
   const [s3FrontKey, setS3FrontKey] = useState(null);
   const [s3BackKey, setS3BackKey] = useState(null);
 
@@ -51,6 +53,10 @@ export default function UserRegistrationForm() {
   const lastLivenessCheckTime = useRef(0);
   const mediaRecorderRef = useRef(null);
   const recordedChunksRef = useRef([]);
+  const selfieMediaRecorderRef = useRef(null);
+  const selfieRecordedChunksRef = useRef([]);
+  const faceLivenessMediaRecorderRef = useRef(null);
+  const faceLivenessRecordedChunksRef = useRef([]);
 
   const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -377,6 +383,18 @@ export default function UserRegistrationForm() {
       stream.getTracks().forEach((track) => track.stop());
       streamRef.current = null;
     }
+
+    // Stop face liveness camera stream and recorder (if it's using a different ref, ensure it's covered)
+    // Note: handleSubmit now uses streamRef for face liveness, so it's covered by general streamRef cleanup.
+    // However, the recorder is specific.
+    if (faceLivenessMediaRecorderRef.current && faceLivenessMediaRecorderRef.current.state === "recording") {
+      faceLivenessMediaRecorderRef.current.onstop = null; // Prevent onstop from firing if we are manually stopping
+      faceLivenessMediaRecorderRef.current.stop();
+    }
+    faceLivenessMediaRecorderRef.current = null;
+    faceLivenessRecordedChunksRef.current = [];
+
+    console.log("All camera streams and recorders stopped.");
   };
 
   // New function to only stop media tracks, without affecting MediaRecorder state
@@ -397,8 +415,9 @@ export default function UserRegistrationForm() {
     setCombinedIdDetails(null);
     setFrontIdVideoDataUrl(null);
     setBackIdVideoDataUrl(null);
+    setSelfieVideoDataUrl(null);
+    setFaceLivenessVideoDataUrl(null);
     setS3FrontKey(null);
-    setS3BackKey(null);
 
     await handleFlip("camera", "left");
     await delay(50);
@@ -406,7 +425,9 @@ export default function UserRegistrationForm() {
   };
 
   const handleSubmit = async () => {
-    stopCamera();
+    if (streamRef.current || selfieMediaRecorderRef.current) { 
+        stopCamera(); // stopCamera now handles both ID and selfie streams/recorders
+    }
     await delay(300);
     await handleFlip("verification", "right");
     await delay(200);
@@ -421,7 +442,18 @@ export default function UserRegistrationForm() {
     setLivenessCheckActive(false);
     lastDetectionTime.current = 0;
     lastLivenessCheckTime.current = 0;
-    startCamera("user", faceVideoRef);
+    await startCameraStream("user", faceVideoRef, streamRef, faceLivenessMediaRecorderRef, faceLivenessRecordedChunksRef, true);
+    
+    // Automatically stop the face liveness recording after 5 seconds
+    if (faceLivenessMediaRecorderRef.current) {
+      setTimeout(() => {
+        if (faceLivenessMediaRecorderRef.current && faceLivenessMediaRecorderRef.current.state === "recording") {
+          console.log("Auto-stopping face liveness recording after 5 seconds.");
+          faceLivenessMediaRecorderRef.current.stop(); 
+          // onstop event of faceLivenessMediaRecorderRef will handle data processing
+        }
+      }, 5000); // 5 seconds
+    }
   };
 
   const detectFaceOnServer = async (dataURL) => {
@@ -639,7 +671,29 @@ export default function UserRegistrationForm() {
     }
   };
 
-  const handleVerificationComplete = () => {
+  const handleVerificationComplete = async () => {
+    // Ensure face liveness recording is stopped before proceeding
+    if (faceLivenessMediaRecorderRef.current && faceLivenessMediaRecorderRef.current.state === "recording") {
+      console.log("Manually stopping face liveness recording due to verification completion.");
+      faceLivenessMediaRecorderRef.current.stop(); // This will trigger its onstop to process data.
+      // Wait a brief moment for onstop to potentially complete and set faceLivenessVideoDataUrl
+      await delay(500); // Adjust delay if needed, or implement a more robust promise-based wait
+    }
+
+    if (faceLivenessVideoDataUrl) {
+      console.log("[UserRegForm] Processing face liveness video for S3 upload...");
+      // Using a slightly different idSide for clarity, backend should handle 'face_liveness_check'
+      const uploadResult = await processVideoForS3(faceLivenessVideoDataUrl, 'face_liveness_check', email);
+      if (!uploadResult.success) {
+        console.warn("Face liveness video S3 upload failed. Proceeding without it.");
+        // Decide on error handling: alert user, or just log and continue?
+      } else {
+        console.log("Face liveness video S3 upload successful.");
+      }
+    } else {
+      console.warn("No face liveness video data URL available to upload.");
+    }
+
     if (faceVerified) {
       // Save the registration with ID details
       saveRegistration();
