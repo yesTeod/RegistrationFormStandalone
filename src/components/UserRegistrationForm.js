@@ -53,15 +53,6 @@ export default function UserRegistrationForm() {
 
   const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
-  const logToScreen = (message, type = 'log') => {
-    const timestamp = new Date().toLocaleTimeString();
-    setDebugLogs(prevLogs => [{ timestamp, type, message: String(message) }, ...prevLogs.slice(0, 49)]);
-    // Also log to console for easier debugging during development if not on phone
-    if (type === 'error') console.error(`[${timestamp}] ${message}`);
-    else if (type === 'warn') console.warn(`[${timestamp}] ${message}`);
-    else console.log(`[${timestamp}] ${message}`);
-  };
-
   const dataURLtoBlob = (dataurl) => {
     if (!dataurl) return null;
     try {
@@ -78,7 +69,6 @@ export default function UserRegistrationForm() {
       }
       return new Blob([u8arr], { type: mime });
     } catch (e) {
-      logToScreen(`Error converting DataURL to Blob: ${e}`, 'error');
       return null;
     }
   };
@@ -87,15 +77,15 @@ export default function UserRegistrationForm() {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
       reader.onloadend = () => {
-        logToScreen("Blob converted to DataURL successfully.");
+        
         resolve(reader.result);
       };
       reader.onerror = (error) => {
-        logToScreen("Error converting blob to DataURL: " + error, 'error');
+        
         reject(error);
       };
       reader.readAsDataURL(blob);
-      logToScreen("Starting blob to DataURL conversion.");
+      
     });
   };
 
@@ -129,7 +119,7 @@ export default function UserRegistrationForm() {
       const data = await response.json();
       
       if (response.ok && data.success) {
-        logToScreen("[form] User logged in successfully: " + JSON.stringify(data));
+        
         setUserData(data);
         if (data.isAdmin) {
           handleFlip("adminDashboard", "right");
@@ -137,16 +127,16 @@ export default function UserRegistrationForm() {
           handleFlip("loggedIn", "right");
         }
       } else if (data.code === 'EMAIL_NOT_FOUND') {
-        logToScreen("[form] User doesn't exist, continuing with registration");
+        
         handleFlip("camera", "right");
       } else if (data.code === 'INCORRECT_PASSWORD') {
         setLoginError("Incorrect password");
       } else {
         setLoginError(data.error || "Login failed");
-        logToScreen("Login failed: " + (data.error || "Unknown error"), 'error');
+        
       }
     } catch (error) {
-      logToScreen("Error checking user: " + error, 'error');
+      
       setLoginError("Network error, please try again");
     } finally {
       setIsCheckingUser(false);
@@ -155,23 +145,23 @@ export default function UserRegistrationForm() {
 
   const capturePhoto = async () => {
     if (mediaRecorderRef.current && mediaRecorderRef.current.state === "recording") {
-      logToScreen("Front ID: MediaRecorder is active and recording. Setting up onstop.");
+      
       mediaRecorderRef.current.onstop = async () => {
-        logToScreen("Front ID: MediaRecorder onstop triggered.");
+        
         const videoBlob = new Blob(recordedChunksRef.current, { type: 'video/webm' });
-        logToScreen(`Front ID: Video blob size: ${videoBlob.size} bytes. Chunks count: ${recordedChunksRef.current.length}`);
+        
 
         if (videoBlob.size > 0) {
           try {
             const videoDataUrl = await blobToDataURL(videoBlob);
             setFrontIdVideoDataUrl(videoDataUrl);
-            logToScreen("Front ID video recorded and DataURL set successfully.");
+            
           } catch (error) {
-            logToScreen("Error converting front ID video blob to DataURL: " + error, 'error');
+            
             setFrontIdVideoDataUrl(null);
           }
         } else {
-          logToScreen("Front ID video blob was empty. Setting video URL to null.", 'warn');
+          
           setFrontIdVideoDataUrl(null);
         }
         recordedChunksRef.current = [];
@@ -192,9 +182,8 @@ export default function UserRegistrationForm() {
         handleFlip("cameraBack", "right");
       };
       mediaRecorderRef.current.stop();
-      logToScreen("Front ID: MediaRecorder.stop() called.");
+      
     } else {
-      logToScreen(`Front ID: MediaRecorder not active or available. MediaRecorder instance: ${mediaRecorderRef.current}, State: ${mediaRecorderRef.current ? mediaRecorderRef.current.state : 'N/A'}. No video will be saved.`, 'warn');
       setFrontIdVideoDataUrl(null); // Ensure it's null if not recorded
       // Fallback if MediaRecorder wasn't active (e.g., browser incompatibility)
       if (videoRef.current && canvasRef.current) {
@@ -214,23 +203,21 @@ export default function UserRegistrationForm() {
 
   const captureBackPhoto = async () => {
     if (mediaRecorderRef.current && mediaRecorderRef.current.state === "recording") {
-      logToScreen("Back ID: MediaRecorder is active and recording. Setting up onstop.");
+      
       mediaRecorderRef.current.onstop = async () => {
-        logToScreen("Back ID: MediaRecorder onstop triggered.");
+        
         const videoBlob = new Blob(recordedChunksRef.current, { type: 'video/webm' });
-        logToScreen(`Back ID: Video blob size: ${videoBlob.size} bytes. Chunks count: ${recordedChunksRef.current.length}`);
 
         if (videoBlob.size > 0) {
           try {
             const videoDataUrl = await blobToDataURL(videoBlob);
             setBackIdVideoDataUrl(videoDataUrl);
-            logToScreen("Back ID video recorded and DataURL set successfully.");
+            
           } catch (error) {
-            logToScreen("Error converting back ID video blob to DataURL: " + error, 'error');
+            
             setBackIdVideoDataUrl(null);
           }
         } else {
-          logToScreen("Back ID video blob was empty. Setting video URL to null.", 'warn');
           setBackIdVideoDataUrl(null);
         }
         recordedChunksRef.current = [];
@@ -251,9 +238,8 @@ export default function UserRegistrationForm() {
         handleFlip("completed", "right");
       };
       mediaRecorderRef.current.stop();
-      logToScreen("Back ID: MediaRecorder.stop() called.");
+      
     } else {
-      logToScreen(`Back ID: MediaRecorder not active or available. MediaRecorder instance: ${mediaRecorderRef.current}, State: ${mediaRecorderRef.current ? mediaRecorderRef.current.state : 'N/A'}. No video will be saved.`, 'warn');
       setBackIdVideoDataUrl(null); // Ensure it's null if not recorded
       // Fallback if MediaRecorder wasn't active
       if (videoRef.current && canvasRef.current) {
@@ -277,7 +263,6 @@ export default function UserRegistrationForm() {
 
     // If a file is uploaded, no video is recorded via camera for this side.
     setFrontIdVideoDataUrl(null);
-    logToScreen("Front ID video set to null due to file upload.");
 
     try {
       setIsUploading(true);
@@ -288,7 +273,7 @@ export default function UserRegistrationForm() {
       };
       reader.readAsDataURL(file);
     } catch (error) {
-      logToScreen("Error processing image: " + error, 'error');
+      
     } finally {
       setIsUploading(false);
     }
@@ -300,7 +285,6 @@ export default function UserRegistrationForm() {
 
     // If a file is uploaded, no video is recorded via camera for this side.
     setBackIdVideoDataUrl(null);
-    logToScreen("Back ID video set to null due to file upload.");
 
     try {
       setIsUploading(true);
@@ -311,7 +295,7 @@ export default function UserRegistrationForm() {
       };
       reader.readAsDataURL(file);
     } catch (error) {
-      logToScreen("Error processing image: " + error, 'error');
+      
     } finally {
       setIsUploading(false);
     }
@@ -336,7 +320,6 @@ export default function UserRegistrationForm() {
   const startCamera = (facing = "environment", targetRef = videoRef) => {
     setCameraStatus("pending");
     const currentStep = step; // Capture current step for accurate logging within async operations
-    logToScreen(`[${currentStep}] Attempting to start camera. Facing: ${facing}, Target: ${targetRef === videoRef ? 'videoRef' : 'faceVideoRef'}`);
     
     navigator.mediaDevices
       .getUserMedia({
@@ -354,81 +337,21 @@ export default function UserRegistrationForm() {
         }
         setCameraAvailable(true);
         setCameraStatus("active");
-        logToScreen(`[${currentStep}] Camera started successfully. Stream ID: ${stream.id}`);
-
-        // Start MediaRecorder if this is for ID capture (not face verification)
-        if ((currentStep === "camera" || currentStep === "cameraBack") && window.MediaRecorder) {
-          recordedChunksRef.current = []; // Clear previous chunks
-          try {
-            const MimeTypesToTry = [
-              'video/webm;codecs=vp9',
-              'video/webm;codecs=vp8',
-              'video/webm',
-              'video/mp4;codecs=h264', // May not be widely supported for recording
-              'video/mp4'             // May not be widely supported for recording
-            ];
-            let supportedMimeType = '';
-
-            for (const mimeType of MimeTypesToTry) {
-              if (MediaRecorder.isTypeSupported(mimeType)) {
-                supportedMimeType = mimeType;
-                logToScreen(`[${currentStep}] Supported MIME type found: ${supportedMimeType}`);
-                break;
-              }
-              logToScreen(`[${currentStep}] MIME type not supported: ${mimeType}`, 'warn');
-            }
-
-            if (!supportedMimeType) {
-              logToScreen(`[${currentStep}] No supported MIME type found for MediaRecorder. Video recording will be disabled for this step.`, 'error');
-              mediaRecorderRef.current = null;
-              return; // Exit if no supported MIME type
-            }
-
-            mediaRecorderRef.current = new MediaRecorder(stream, { mimeType: supportedMimeType });
-            mediaRecorderRef.current.ondataavailable = (event) => {
-              if (event.data.size > 0) {
-                recordedChunksRef.current.push(event.data);
-                logToScreen(`[${currentStep}] MediaRecorder data available. Chunk size: ${event.data.size}. Total chunks: ${recordedChunksRef.current.length}`);
-              } else {
-                logToScreen(`[${currentStep}] MediaRecorder data available, but chunk size is 0.`, 'warn');
-              }
-            };
-            mediaRecorderRef.current.onstart = () => {
-              logToScreen(`[${currentStep}] MediaRecorder started successfully. State: ${mediaRecorderRef.current.state}, MIMEType: ${supportedMimeType}`);
-            };
-            mediaRecorderRef.current.onstop = () => {
-              logToScreen(`[${currentStep}] MediaRecorder stopped. State: ${mediaRecorderRef.current.state}. Chunks collected: ${recordedChunksRef.current.length}`);
-            };
-            mediaRecorderRef.current.onerror = (event) => {
-              logToScreen(`[${currentStep}] MediaRecorder error: ` + JSON.stringify(event.error || event), 'error');
-            };
-            mediaRecorderRef.current.start();
-            logToScreen(`[${currentStep}] MediaRecorder.start() called. Current state: ${mediaRecorderRef.current.state}`);
-          } catch (e) {
-            logToScreen(`[${currentStep}] Error initializing MediaRecorder: ` + e, 'error');
-            mediaRecorderRef.current = null;
-          }
-        } else if (currentStep === "camera" || currentStep === "cameraBack") {
-          logToScreen(`[${currentStep}] MediaRecorder API not available in this browser.`, 'warn');
-        }
       })
       .catch((err) => {
         setCameraAvailable(false);
         setCameraStatus("error");
         setMockMode(false);
-        logToScreen(`[${currentStep}] Error starting camera: ` + err, 'error');
       });
   };
 
   const stopCamera = () => {
-    logToScreen("stopCamera called.");
     if (mediaRecorderRef.current && mediaRecorderRef.current.state === "recording") {
       mediaRecorderRef.current.onstop = null; // Remove any existing onstop handler
       mediaRecorderRef.current.stop();
       recordedChunksRef.current = []; // Clear chunks as we are not saving this video
-      logToScreen("MediaRecorder was recording, now stopped by stopCamera. Chunks cleared.");
     } else if (mediaRecorderRef.current) {
-      logToScreen(`MediaRecorder was not recording (state: ${mediaRecorderRef.current.state}), but instance exists. Clearing ref.`, 'warn');
+      
     }
     mediaRecorderRef.current = null;
 
@@ -436,22 +359,19 @@ export default function UserRegistrationForm() {
     if (stream) {
       stream.getTracks().forEach((track) => track.stop());
       streamRef.current = null;
-      logToScreen("Media stream tracks stopped.");
     } else {
-      logToScreen("No active media stream to stop.", 'warn');
+      
     }
   };
 
   // New function to only stop media tracks, without affecting MediaRecorder state
   const stopMediaTracks = () => {
-    logToScreen("stopMediaTracks called.");
     const stream = streamRef.current;
     if (stream) {
       stream.getTracks().forEach((track) => track.stop());
       streamRef.current = null;
-      logToScreen("Media stream tracks stopped (by stopMediaTracks).");
     } else {
-      logToScreen("No active media stream to stop (by stopMediaTracks).", 'warn');
+      
     }
   };
 
@@ -464,7 +384,7 @@ export default function UserRegistrationForm() {
     setCombinedIdDetails(null);
     setFrontIdVideoDataUrl(null);
     setBackIdVideoDataUrl(null);
-    logToScreen("Photo and video states reset for retake.");
+    
 
     await handleFlip("camera", "left");
     await delay(50);
@@ -785,11 +705,11 @@ export default function UserRegistrationForm() {
   useEffect(() => {
     if (step === "completed" && photoFront && photoBack && !idDetails && !backIdDetails && !isExtracting) {
       extractIdDetails(photoFront, true).then((frontDetails) => {
-        logToScreen("[completed] Extracted Front ID Details:" + JSON.stringify(frontDetails));
+        
         setIdDetails(frontDetails);
         
         extractIdDetails(photoBack, true).then((backDetails) => {
-          logToScreen("[completed] Extracted Back ID Details:" + JSON.stringify(backDetails));
+          
           setBackIdDetails(backDetails);
           
           const combined = {};
@@ -818,11 +738,11 @@ export default function UserRegistrationForm() {
 
   useEffect(() => {
     if (step === "camera") {
-      logToScreen("[useEffect] Step changed to 'camera'. Starting camera for front ID.");
+      
       startCamera("environment", videoRef);
     }
     if (step === "cameraBack") {
-      logToScreen("[useEffect] Step changed to 'cameraBack'. Starting camera for back ID.");
+      
       startCamera("environment", videoRef);
     }
   }, [step]);
@@ -1184,24 +1104,21 @@ export default function UserRegistrationForm() {
 
   const saveRegistration = async () => {
     if (!email || !password || !faceVerified) {
-      logToScreen("Cannot save registration - missing required data (email, password, or faceVerified).", 'error');
       return;
     }
 
-    logToScreen(`Initial check - Front video URL length: ${frontIdVideoDataUrl ? frontIdVideoDataUrl.length : '0'}. Back video URL length: ${backIdVideoDataUrl ? backIdVideoDataUrl.length : '0'}`);
-    
     let frontVideoS3Key = null;
     let backVideoS3Key = null;
     const videoFileType = 'video/mp4'; // Determined from previous logs
 
     setIsUploading(true); // Use a general uploading/processing state
-    logToScreen("Starting registration save process including S3 uploads...");
+    
 
     try {
       // Upload Front ID Video to S3 if it exists
       const frontVideoBlob = dataURLtoBlob(frontIdVideoDataUrl);
       if (frontVideoBlob) {
-        logToScreen("Front video blob created. Requesting S3 pre-signed URL...");
+        
         const presignedResponseFront = await fetch('/api/generate-s3-upload-url', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -1212,7 +1129,7 @@ export default function UserRegistrationForm() {
         if (!presignedResponseFront.ok || !presignedDataFront.success) {
           throw new Error(presignedDataFront.error || "Failed to get S3 pre-signed URL for front video");
         }
-        logToScreen(`S3 pre-signed URL obtained for front video. Key: ${presignedDataFront.key}`);
+        
 
         const formDataFront = new FormData();
         Object.entries(presignedDataFront.fields).forEach(([key, value]) => {
@@ -1220,7 +1137,7 @@ export default function UserRegistrationForm() {
         });
         formDataFront.append("file", frontVideoBlob);
 
-        logToScreen("Uploading front video to S3...");
+        
         const s3UploadResponseFront = await fetch(presignedDataFront.url, {
           method: 'POST',
           body: formDataFront,
@@ -1228,19 +1145,19 @@ export default function UserRegistrationForm() {
 
         if (!s3UploadResponseFront.ok) {
           const errorText = await s3UploadResponseFront.text();
-          logToScreen(`S3 Upload Error (Front Video): ${s3UploadResponseFront.status} - ${errorText}`, 'error')
+          
           throw new Error(`S3 upload failed for front video: ${s3UploadResponseFront.status}`);
         }
         frontVideoS3Key = presignedDataFront.key;
-        logToScreen(`Front video successfully uploaded to S3. Key: ${frontVideoS3Key}`);
+        
       } else if (frontIdVideoDataUrl) {
-        logToScreen("Front video DataURL existed but failed to convert to Blob.", 'warn');
+        
       }
 
       // Upload Back ID Video to S3 if it exists
       const backVideoBlob = dataURLtoBlob(backIdVideoDataUrl);
       if (backVideoBlob) {
-        logToScreen("Back video blob created. Requesting S3 pre-signed URL...");
+        
         const presignedResponseBack = await fetch('/api/generate-s3-upload-url', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -1251,7 +1168,7 @@ export default function UserRegistrationForm() {
         if (!presignedResponseBack.ok || !presignedDataBack.success) {
           throw new Error(presignedDataBack.error || "Failed to get S3 pre-signed URL for back video");
         }
-        logToScreen(`S3 pre-signed URL obtained for back video. Key: ${presignedDataBack.key}`);
+        
 
         const formDataBack = new FormData();
         Object.entries(presignedDataBack.fields).forEach(([key, value]) => {
@@ -1259,7 +1176,7 @@ export default function UserRegistrationForm() {
         });
         formDataBack.append("file", backVideoBlob);
 
-        logToScreen("Uploading back video to S3...");
+        
         const s3UploadResponseBack = await fetch(presignedDataBack.url, {
           method: 'POST',
           body: formDataBack,
@@ -1267,17 +1184,17 @@ export default function UserRegistrationForm() {
 
         if (!s3UploadResponseBack.ok) {
           const errorText = await s3UploadResponseBack.text();
-          logToScreen(`S3 Upload Error (Back Video): ${s3UploadResponseBack.status} - ${errorText}`, 'error')
+          
           throw new Error(`S3 upload failed for back video: ${s3UploadResponseBack.status}`);
         }
         backVideoS3Key = presignedDataBack.key;
-        logToScreen(`Back video successfully uploaded to S3. Key: ${backVideoS3Key}`);
+        
       } else if (backIdVideoDataUrl) {
-        logToScreen("Back video DataURL existed but failed to convert to Blob.", 'warn');
+        
       }
 
       // Now save registration with S3 keys
-      logToScreen("Proceeding to save registration data to backend with S3 keys...");
+      
       const regResponse = await fetch('/api/save-registration', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1293,7 +1210,7 @@ export default function UserRegistrationForm() {
       const regData = await regResponse.json();
       
       if (regResponse.ok && regData.success) {
-        logToScreen("Registration saved successfully with S3 keys. Now attempting to log in.");
+        
         
         // Attempt to login the user automatically
         try {
@@ -1305,7 +1222,7 @@ export default function UserRegistrationForm() {
           const loginData = await loginResponse.json();
 
           if (loginResponse.ok && loginData.success) {
-            logToScreen("Auto-login after registration successful:" + JSON.stringify(loginData));
+            
             setUserData(loginData); // Use login data to set the user session
             if (loginData.isAdmin) {
               handleFlip("adminDashboard", "right");
@@ -1313,12 +1230,12 @@ export default function UserRegistrationForm() {
               handleFlip("loggedIn", "right"); // Go to the loggedIn step (dashboard)
             }
           } else {
-            logToScreen("Auto-login after registration failed: " + (loginData.error || "Unknown error"), 'error');
+            
             alert("Registration was successful, but auto-login failed. Please try logging in manually.");
             handleFlip("form", "left"); // Go back to form if auto-login fails
           }
         } catch (loginError) {
-          logToScreen("Error during auto-login after registration: " + loginError, 'error');
+          
           alert("Registration was successful, but an error occurred during auto-login. Please try logging in manually.");
           handleFlip("form", "left"); // Go back to form if auto-login fails
         }
@@ -1330,8 +1247,8 @@ export default function UserRegistrationForm() {
         alert("Error saving registration: " + (regData.error || "Unknown error"));
       }
     } catch (error) {
-      logToScreen("Error during S3 upload or saving registration: " + error.toString(), 'error');
-      logToScreen("Full error object: " + JSON.stringify(error, Object.getOwnPropertyNames(error)), 'error');
+      
+      
       setIsUploading(false);
       alert("A network error occurred, or the system was unable to save your registration. Please check your connection and try again. If the problem persists, note any error messages from the on-screen log.");
     } finally {
