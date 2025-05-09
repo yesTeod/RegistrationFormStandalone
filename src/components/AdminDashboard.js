@@ -225,7 +225,15 @@ export default function AdminDashboard() {
       )}
 
       {showVideoModal && currentVideoUrl && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+        <div 
+          className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
+          onClick={(e) => {
+            // If the click is on the backdrop itself, close the modal
+            if (e.target === e.currentTarget) {
+              closeVideoModal();
+            }
+          }}
+        >
           <div className="bg-white p-4 rounded-lg shadow-xl max-w-xl w-full">
             <div className="flex justify-between items-center mb-2">
               <h3 className="text-lg font-semibold">ID Capture Video</h3>
