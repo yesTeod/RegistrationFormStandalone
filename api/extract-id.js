@@ -128,7 +128,7 @@ export default async function handler(request) {
       } else if (surname !== "Not found") {
         finalFullName = surname; // Fallback to surname if only surname is found for fullName
       }
-      
+
       const nameDetails = {
         fullName: finalFullName,
         fatherName: fatherName
@@ -158,6 +158,7 @@ export default async function handler(request) {
       const nationality = findValueByKey(formFields, ["nationality", "citizenship"]) || extractNationality(processedText);
       const gender = findValueByKey(formFields, ["gender", "sex"]) || extractGender(processedText);
       const issueDate = findValueByKey(formFields, ["date of issue", "issue date", "issued on"]) || extractIssueDate(processedText);
+      const personalNumber = findValueByKey(formFields, ["personal no", "personal number", "p.no", "egn", "jmbg", "personal id", "pin", "id code", "personal code"]) || extractPersonalNumber(processedText);
       
       const idDetails = {
         fullName: nameDetails.fullName,
@@ -168,7 +169,8 @@ export default async function handler(request) {
         placeOfBirth,
         nationality,
         gender,
-        issueDate
+        issueDate,
+        personalNumber
       };
       
       // Log the complete extracted details
@@ -191,7 +193,8 @@ export default async function handler(request) {
           placeOfBirth: "Not found",
           nationality: "Not found",
           gender: "Not found",
-          issueDate: "Not found"
+          issueDate: "Not found",
+          personalNumber: "Not found" // Added personalNumber
         }),
         { status: 200, headers: { 'Content-Type': 'application/json' } }
       );
@@ -209,7 +212,8 @@ export default async function handler(request) {
         placeOfBirth: "Not found",
         nationality: "Not found",
         gender: "Not found",
-        issueDate: "Not found"
+        issueDate: "Not found",
+        personalNumber: "Not found" // Added personalNumber
       }),
       { status: 200, headers: { 'Content-Type': 'application/json' } }
     );
@@ -400,7 +404,7 @@ function extractIdNumberFromText(text) {
     if (match && match[1]) {
       // Additional check to prevent matching common words like "SURNAME" if captured
       if (!/^(?:SURNAME|NAME)$/i.test(match[1].trim())) {
-        return match[1].trim();
+      return match[1].trim();
       }
     }
   }
@@ -616,7 +620,7 @@ function extractIssueDate(text) {
   // Fallback: Try to find a date that isn't DOB or Expiry
   // These calls ensure we are comparing against what other functions would identify as DOB/Expiry.
   const dobDate = extractDateOfBirth(text); 
-  const expiryDate = extractExpiryFromText(text); 
+  const expiryDate = extractExpiryFromText(text);
   
   const allDateMatches = text.match(/\b\d{1,2}[\/-]\d{1,2}[\/-]\d{2,4}\b/g);
   if (allDateMatches && allDateMatches.length > 0) {
@@ -628,6 +632,47 @@ function extractIssueDate(text) {
       // A more sophisticated approach might consider date order (DOB < Issue < Expiry)
       // or proximity to keywords if parsing fails for direct labels.
       return potentialIssueDates[0]; 
+    }
+  }
+  
+  return "Not found";
+}
+
+// Function to extract Personal Number
+function extractPersonalNumber(text) {
+  const patterns = [
+    // English labels
+    /(?:Personal\\s*No\\.?|P\\.No\\.?|Personal\\s*Number|Personal\\s*ID|PIN|ID\\s*Code|Personal\\s*Code)[\s:]*([A-Z0-9\\-\\/]{6,15})/i,
+    // Common European / Balkan IDs often used as Personal Numbers
+    /(?:EGN|JMBG)[\s:]*([0-9]{10,13})/i, 
+    // Bulgarian Cyrillic labels (these might be filtered by englishOnly=true, but included for completeness)
+    /(?:Личен\\s*номер|ЛН|ЕГН|Персонален\\s*номер|Уникален\\s*граждански\\s*номер)[\s:]*([0-9]{10,13})/i
+  ];
+
+  for (const pattern of patterns) {
+    const match = text.match(pattern);
+    if (match && match[1]) {
+      return match[1].trim();
+    }
+  }
+
+  // Next line extraction logic
+  const lines = text.split('\\n').map(line => line.trim()).filter(Boolean);
+  const nextLineLabels = [
+    "personal no", "p.no", "personal number", "personal id", "pin", "id code", "personal code",
+    "egn", "jmbg",
+    "личен номер", "лн", "егн", "персонален номер", "уникален граждански номер" // Cyrillic
+  ];
+
+  for (let i = 0; i < lines.length - 1; i++) {
+    const lowerLine = lines[i].toLowerCase();
+    // Check if the current line IS one of the labels (exact match or specific phrases)
+    if (nextLineLabels.some(label => lowerLine === label || (label.includes(" ") && lowerLine.includes(label)) )) {
+      const potentialValue = lines[i + 1];
+      // Basic validation: alphanumeric, typical length range, not a date
+      if (/^[A-Z0-9\\-\\/]{6,15}$/.test(potentialValue) && !/^\\d{1,2}[\\/-]\\d{1,2}[\\/-]\\d{2,4}$/.test(potentialValue)) {
+        return potentialValue.trim();
+      }
     }
   }
   
