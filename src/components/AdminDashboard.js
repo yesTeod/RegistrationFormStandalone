@@ -10,6 +10,7 @@ export default function AdminDashboard() {
   const [isVideoLoadingModal, setIsVideoLoadingModal] = useState(false);
   const [videoModalError, setVideoModalError] = useState(null);
   const [approvingUserId, setApprovingUserId] = useState(null);
+  const [expandedUserId, setExpandedUserId] = useState(null);
 
   useEffect(() => {
     const fetchUsers = async () => {
@@ -102,8 +103,12 @@ export default function AdminDashboard() {
     }
   };
 
+  const toggleUserDetails = (userId) => {
+    setExpandedUserId(expandedUserId === userId ? null : userId);
+  };
+
   return (
-    <div className="p-6 max-w-[75%] mx-auto bg-white rounded-xl shadow-md space-y-6">
+    <div className="p-6 max-w-[90%] mx-auto bg-white rounded-xl shadow-md space-y-6">
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-3xl font-bold text-gray-800">Admin Dashboard</h1>
         <button
@@ -146,12 +151,8 @@ export default function AdminDashboard() {
           <table className="min-w-full bg-white rounded-lg shadow overflow-hidden">
             <thead className="bg-gray-800 text-white">
               <tr>
+                <th className="text-left py-3 px-4 uppercase font-semibold text-sm w-12"></th>
                 <th className="text-left py-3 px-4 uppercase font-semibold text-sm">Email</th>
-                <th className="text-left py-3 px-4 uppercase font-semibold text-sm">Name</th>
-                <th className="text-left py-3 px-4 uppercase font-semibold text-sm">ID Number</th>
-                <th className="text-left py-3 px-4 uppercase font-semibold text-sm">Date of Birth</th>
-                <th className="text-left py-3 px-4 uppercase font-semibold text-sm">Expiry Date</th>
-                <th className="text-left py-3 px-4 uppercase font-semibold text-sm">Gender</th>
                 <th className="text-left py-3 px-4 uppercase font-semibold text-sm">Status</th>
                 <th className="text-left py-3 px-4 uppercase font-semibold text-sm">Front ID Video</th>
                 <th className="text-left py-3 px-4 uppercase font-semibold text-sm">Back ID Video</th>
@@ -161,63 +162,97 @@ export default function AdminDashboard() {
             </thead>
             <tbody className="text-gray-700">
               {filteredUsers.map((user, index) => (
-                <tr key={index} className="hover:bg-gray-100 border-b border-gray-200">
-                  <td className="text-left py-3 px-4">{user.email}</td>
-                  <td className="text-left py-3 px-4">{user.idDetails?.name || 'N/A'}</td>
-                  <td className="text-left py-3 px-4">{user.idDetails?.idNumber || 'N/A'}</td>
-                  <td className="text-left py-3 px-4">{user.idDetails?.dateOfBirth || 'N/A'}</td>
-                  <td className="text-left py-3 px-4">{user.idDetails?.expiry || 'N/A'}</td>
-                  <td className="text-left py-3 px-4">{user.idDetails?.gender || 'N/A'}</td>
-                  <td className="text-left py-3 px-4">{user.status || 'N/A'}</td>
-                  <td className="text-left py-3 px-4">
-                    {user.frontIdVideoS3Key ? (
-                      <button 
-                        onClick={() => openVideoModal(user.frontIdVideoS3Key)}
-                        className="px-3 py-1 bg-blue-500 text-white text-xs rounded hover:bg-blue-600 transition-colors"
-                      >
-                        View Front Video
-                      </button>
-                    ) : 'N/A'}
-                  </td>
-                  <td className="text-left py-3 px-4">
-                    {user.backIdVideoS3Key ? (
-                      <button 
-                        onClick={() => openVideoModal(user.backIdVideoS3Key)}
-                        className="px-3 py-1 bg-blue-500 text-white text-xs rounded hover:bg-blue-600 transition-colors"
-                      >
-                        View Back Video
-                      </button>
-                    ) : 'N/A'}
-                  </td>
-                  <td className="text-left py-3 px-4">
-                    {user.selfieVideoS3Key ? (
-                      <button 
-                        onClick={() => openVideoModal(user.selfieVideoS3Key)}
-                        className="px-3 py-1 bg-blue-500 text-white text-xs rounded hover:bg-blue-600 transition-colors"
-                      >
-                        View Selfie Video
-                      </button>
-                    ) : 'N/A'}
-                  </td>
-                  <td className="text-left py-3 px-4">
-                    {user.status !== 'approved' && (
+                <React.Fragment key={user.email || index}>
+                  <tr className="hover:bg-gray-100 border-b border-gray-200">
+                    <td className="text-center py-3 px-4">
                       <button
-                        onClick={() => handleApproveUser(user.email)}
-                        disabled={approvingUserId === user.email}
-                        className={`px-3 py-1 text-xs rounded transition-colors 
-                          ${approvingUserId === user.email 
-                            ? 'bg-gray-400 text-gray-700 cursor-not-allowed' 
-                            : 'bg-green-500 hover:bg-green-600 text-white'}
-                        `}
+                        onClick={() => toggleUserDetails(user.email)}
+                        className="text-blue-500 hover:text-blue-700 text-xl"
+                        aria-label="Toggle details"
                       >
-                        {approvingUserId === user.email ? 'Approving...' : 'Approve'}
+                        {expandedUserId === user.email ? '\u2296' : '\u2295'}
                       </button>
-                    )}
-                    {user.status === 'approved' && (
-                      <span className="text-xs text-green-600 font-semibold">Approved</span>
-                    )}
-                  </td>
-                </tr>
+                    </td>
+                    <td className="text-left py-3 px-4">{user.email}</td>
+                    <td className="text-left py-3 px-4">{user.status || 'N/A'}</td>
+                    <td className="text-left py-3 px-4">
+                      {user.frontIdVideoS3Key ? (
+                        <button 
+                          onClick={() => openVideoModal(user.frontIdVideoS3Key)}
+                          className="px-3 py-1 bg-blue-500 text-white text-xs rounded hover:bg-blue-600 transition-colors"
+                        >
+                          View Front Video
+                        </button>
+                      ) : 'N/A'}
+                    </td>
+                    <td className="text-left py-3 px-4">
+                      {user.backIdVideoS3Key ? (
+                        <button 
+                          onClick={() => openVideoModal(user.backIdVideoS3Key)}
+                          className="px-3 py-1 bg-blue-500 text-white text-xs rounded hover:bg-blue-600 transition-colors"
+                        >
+                          View Back Video
+                        </button>
+                      ) : 'N/A'}
+                    </td>
+                    <td className="text-left py-3 px-4">
+                      {user.selfieVideoS3Key ? (
+                        <button 
+                          onClick={() => openVideoModal(user.selfieVideoS3Key)}
+                          className="px-3 py-1 bg-blue-500 text-white text-xs rounded hover:bg-blue-600 transition-colors"
+                        >
+                          View Selfie Video
+                        </button>
+                      ) : 'N/A'}
+                    </td>
+                    <td className="text-left py-3 px-4">
+                      {user.status !== 'approved' && (
+                        <button
+                          onClick={() => handleApproveUser(user.email)}
+                          disabled={approvingUserId === user.email}
+                          className={`px-3 py-1 text-xs rounded transition-colors 
+                            ${approvingUserId === user.email 
+                              ? 'bg-gray-400 text-gray-700 cursor-not-allowed' 
+                              : 'bg-green-500 hover:bg-green-600 text-white'}
+                          `}
+                        >
+                          {approvingUserId === user.email ? 'Approving...' : 'Approve'}
+                        </button>
+                      )}
+                      {user.status === 'approved' && (
+                        <span className="text-xs text-green-600 font-semibold">Approved</span>
+                      )}
+                    </td>
+                  </tr>
+                  {expandedUserId === user.email && (
+                    <tr className="bg-gray-50 border-b border-gray-200">
+                      <td colSpan="7" className="p-4">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 bg-white rounded shadow">
+                          <div>
+                            <h4 className="font-semibold text-gray-700 mb-1">Name:</h4>
+                            <p className="text-gray-600">{user.idDetails?.name || 'N/A'}</p>
+                          </div>
+                          <div>
+                            <h4 className="font-semibold text-gray-700 mb-1">ID Number:</h4>
+                            <p className="text-gray-600">{user.idDetails?.idNumber || 'N/A'}</p>
+                          </div>
+                          <div>
+                            <h4 className="font-semibold text-gray-700 mb-1">Date of Birth:</h4>
+                            <p className="text-gray-600">{user.idDetails?.dateOfBirth || 'N/A'}</p>
+                          </div>
+                          <div>
+                            <h4 className="font-semibold text-gray-700 mb-1">Expiry Date:</h4>
+                            <p className="text-gray-600">{user.idDetails?.expiry || 'N/A'}</p>
+                          </div>
+                          <div>
+                            <h4 className="font-semibold text-gray-700 mb-1">Gender:</h4>
+                            <p className="text-gray-600">{user.idDetails?.gender || 'N/A'}</p>
+                          </div>
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                </React.Fragment>
               ))}
             </tbody>
           </table>
