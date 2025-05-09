@@ -38,6 +38,7 @@ export default function UserRegistrationForm() {
   const [frontIdVideoDataUrl, setFrontIdVideoDataUrl] = useState(null);
   const [backIdVideoDataUrl, setBackIdVideoDataUrl] = useState(null);
   const [debugLogs, setDebugLogs] = useState([]);
+  const [isProcessingConfirmation, setIsProcessingConfirmation] = useState(false);
 
   const videoRef = useRef(null);
   const faceVideoRef = useRef(null);
@@ -1102,6 +1103,27 @@ export default function UserRegistrationForm() {
     alert(alertMessage);
   };
 
+  const handleConfirmAndProceed = async () => {
+    setIsProcessingConfirmation(true);
+
+    // Check if there are videos to upload. This check is also in the button's disabled logic.
+    if (frontIdVideoDataUrl || backIdVideoDataUrl) {
+      // Await the upload attempt. Proceed regardless of its internal success/failure,
+      // but after it has completed its execution (including any alerts).
+      await handleDirectS3Upload(); 
+    } else {
+      // This case should ideally not be reached if the button is disabled when no videos.
+      // If it can be reached, logging is appropriate.
+      console.log("No videos available to upload. Proceeding to verification.");
+    }
+    
+    // Proceed to face verification step by calling handleSubmit.
+    await handleSubmit(); 
+
+    // No need to set setIsProcessingConfirmation(false) as the step will change,
+    // effectively removing this button or this part of the component.
+  };
+
   const saveRegistration = async () => {
     if (!email || !password || !faceVerified) {
       return;
@@ -1540,15 +1562,15 @@ export default function UserRegistrationForm() {
               Retake Photos
             </button>
             <button
-              onClick={handleDirectS3Upload}
-              disabled={isUploading || (!frontIdVideoDataUrl && !backIdVideoDataUrl)}
+              onClick={handleConfirmAndProceed}
+              disabled={isProcessingConfirmation || (!frontIdVideoDataUrl && !backIdVideoDataUrl)}
               className={`px-6 py-2 text-black transition shadow-md ${
-                (isUploading || (!frontIdVideoDataUrl && !backIdVideoDataUrl))
+                (isProcessingConfirmation || (!frontIdVideoDataUrl && !backIdVideoDataUrl))
                   ? "bg-gray-300 text-gray-500 cursor-not-allowed"
                   : "bg-yellow-400 hover:bg-yellow-300"
               }`}
             >
-              {isUploading ? "Uploading..." : "Upload Videos to S3 (Test)"}
+              {isProcessingConfirmation ? "Processing..." : "Confirm & Proceed to Verification"}
             </button>
           </div>
         </div>
