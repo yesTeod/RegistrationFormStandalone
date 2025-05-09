@@ -51,14 +51,14 @@ export default async function handler(req, res) {
     const db = await getDb(); // Get or establish database connection
     const collection = db.collection("user_verifications");
 
-    const { frontS3Key, backS3Key, email } = req.body;
+    const { frontS3Key, backS3Key, selfieS3Key, email } = req.body;
 
     if (!email) {
       console.error("[API /api/save-video-keys] Email is required in request body.");
       return res.status(400).json({ success: false, error: "Email is required to save/update video keys." });
     }
 
-    console.log("[API /api/save-video-keys] Received data for DB save/update:", { frontS3Key, backS3Key, email });
+    console.log("[API /api/save-video-keys] Received data for DB save/update:", { frontS3Key, backS3Key, selfieS3Key, email });
 
     const updateData = {
       $set: {
@@ -76,6 +76,9 @@ export default async function handler(req, res) {
     }
     if (backS3Key !== undefined) {
       updateData.$set.backIdVideoS3Key = backS3Key;
+    }
+    if (selfieS3Key !== undefined) {
+      updateData.$set.selfieVideoS3Key = selfieS3Key;
     }
 
     console.log("[API /api/save-video-keys] Attempting MongoDB update for email:", email, "With data:", JSON.stringify(updateData));
