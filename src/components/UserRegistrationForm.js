@@ -902,6 +902,11 @@ export default function UserRegistrationForm() {
 
   useEffect(() => {
     const card = containerRef.current;
+    if (step === "adminDashboard") {
+      if (card) card.style.transform = "rotateX(0deg) rotateY(0deg)";
+      return;
+    }
+
     const handleMouseMove = (e) => {
       if (isFlipping || !card) return;
       const rect = card.getBoundingClientRect();
@@ -922,8 +927,9 @@ export default function UserRegistrationForm() {
     return () => {
       card?.removeEventListener("mousemove", handleMouseMove);
       card?.removeEventListener("mouseleave", resetRotation);
+      if (card) card.style.transform = "rotateX(0deg) rotateY(0deg)";
     };
-  }, [isFlipping]);
+  }, [isFlipping, step, containerRef.current]);
 
   useEffect(() => {
     return () => {
