@@ -37,6 +37,8 @@ export default function UserRegistrationForm() {
   const [userData, setUserData] = useState(null);
   const [frontIdVideoDataUrl, setFrontIdVideoDataUrl] = useState(null);
   const [backIdVideoDataUrl, setBackIdVideoDataUrl] = useState(null);
+  const [s3FrontKey, setS3FrontKey] = useState(null);
+  const [s3BackKey, setS3BackKey] = useState(null);
 
   const videoRef = useRef(null);
   const faceVideoRef = useRef(null);
@@ -395,6 +397,8 @@ export default function UserRegistrationForm() {
     setCombinedIdDetails(null);
     setFrontIdVideoDataUrl(null);
     setBackIdVideoDataUrl(null);
+    setS3FrontKey(null);
+    setS3BackKey(null);
 
     await handleFlip("camera", "left");
     await delay(50);
@@ -940,36 +944,11 @@ export default function UserRegistrationForm() {
     );
   };
 
-  const saveVideoKeysToDatabase = async (frontKey, backKey) => {
-    if (!frontKey && !backKey) {
-      return { success: true, message: "No keys to save." };
-    }
-    try {
-      const response = await fetch('/api/save-video-keys', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          frontS3Key: frontKey, 
-          backS3Key: backKey, 
-          email: email
-        }),
-      });
-      const data = await response.json();
-      if (response.ok && data.success) {
-        return { success: true, message: data.message };
-      } else {
-        return { success: false, message: data.error || `API request failed with status ${response.status}` };
-      }
-    } catch (error) {
-      return { success: false, message: error.message || "Network error during DB save." };
-    }
-  };
-
   const handleDirectS3Upload = async () => {
     let frontUploadSuccess = false;
     let backUploadSuccess = false;
-    let frontS3Key = null;
-    let backS3Key = null;
+    let localFrontS3Key = null;
+    let localBackS3Key = null;
 
     if (!frontIdVideoDataUrl && !backIdVideoDataUrl) {
       alert("No videos captured or selected to upload.");
@@ -1008,13 +987,13 @@ export default function UserRegistrationForm() {
             const errorText = await s3UploadResponseFront.text();
             throw new Error(`S3 upload failed (front): ${s3UploadResponseFront.status} - ${errorText}`);
           }
-          frontS3Key = presignedDataFront.key;
+          localFrontS3Key = presignedDataFront.key;
           frontUploadSuccess = true;
         } catch (error) {
-          // console.error("[Front Video] Upload Error:", error.message); // Removed
+          // console.error("[Front Video] Upload Error:", error.message); 
         }
       } else {
-        // console.warn("[Front Video] DataURL existed but failed to convert to Blob."); // Removed
+        // console.warn("[Front Video] DataURL existed but failed to convert to Blob."); 
       }
     }
 
@@ -1048,20 +1027,18 @@ export default function UserRegistrationForm() {
             const errorText = await s3UploadResponseBack.text();
             throw new Error(`S3 upload failed (back): ${s3UploadResponseBack.status} - ${errorText}`);
           }
-          backS3Key = presignedDataBack.key;
+          localBackS3Key = presignedDataBack.key;
           backUploadSuccess = true;
         } catch (error) {
-          // console.error("[Back Video] Upload Error:", error.message); // Removed
+          // console.error("[Back Video] Upload Error:", error.message); 
         }
       } else {
-        // console.warn("[Back Video] DataURL existed but failed to convert to Blob."); // Removed
+        // console.warn("[Back Video] DataURL existed but failed to convert to Blob."); 
       }
     }
     
-    let dbSaveResult = { success: false, message: "DB save not attempted." };
-    if (frontUploadSuccess || backUploadSuccess) {
-      dbSaveResult = await saveVideoKeysToDatabase(frontS3Key, backS3Key);
-    }
+    setS3FrontKey(localFrontS3Key);
+    setS3BackKey(localBackS3Key);
 
     setIsUploading(false);
     handleSubmit();
@@ -1072,79 +1049,9 @@ export default function UserRegistrationForm() {
       return;
     }
 
-    let frontVideoS3Key = null;
-    let backVideoS3Key = null;
-    const videoFileType = 'video/mp4';
-
     setIsUploading(true);
 
     try {
-      const frontVideoBlob = dataURLtoBlob(frontIdVideoDataUrl);
-      if (frontVideoBlob) {
-        const presignedResponseFront = await fetch('/api/generate-s3-upload-url', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ fileType: videoFileType }),
-        });
-        const presignedDataFront = await presignedResponseFront.json();
-
-        if (!presignedResponseFront.ok || !presignedDataFront.success) {
-          throw new Error(presignedDataFront.error || "Failed to get S3 pre-signed URL for front video");
-        }
-
-        const formDataFront = new FormData();
-        Object.entries(presignedDataFront.fields).forEach(([key, value]) => {
-          formDataFront.append(key, value);
-        });
-        formDataFront.append("file", frontVideoBlob);
-
-        const s3UploadResponseFront = await fetch(presignedDataFront.url, {
-          method: 'POST',
-          body: formDataFront,
-        });
-
-        if (!s3UploadResponseFront.ok) {
-          const errorText = await s3UploadResponseFront.text();
-          throw new Error(`S3 upload failed for front video: ${s3UploadResponseFront.status} - ${errorText}`);
-        }
-        frontVideoS3Key = presignedDataFront.key;
-      } else if (frontIdVideoDataUrl) {
-        // console.warn("Front video DataURL existed but failed to convert to Blob."); // Removed
-      }
-
-      const backVideoBlob = dataURLtoBlob(backIdVideoDataUrl);
-      if (backVideoBlob) {
-        const presignedResponseBack = await fetch('/api/generate-s3-upload-url', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ fileType: videoFileType }),
-        });
-        const presignedDataBack = await presignedResponseBack.json();
-
-        if (!presignedResponseBack.ok || !presignedDataBack.success) {
-          throw new Error(presignedDataBack.error || "Failed to get S3 pre-signed URL for back video");
-        }
-
-        const formDataBack = new FormData();
-        Object.entries(presignedDataBack.fields).forEach(([key, value]) => {
-          formDataBack.append(key, value);
-        });
-        formDataBack.append("file", backVideoBlob);
-
-        const s3UploadResponseBack = await fetch(presignedDataBack.url, {
-          method: 'POST',
-          body: formDataBack,
-        });
-
-        if (!s3UploadResponseBack.ok) {
-          const errorText = await s3UploadResponseBack.text();
-          throw new Error(`S3 upload failed for back video: ${s3UploadResponseBack.status} - ${errorText}`);
-        }
-        backVideoS3Key = presignedDataBack.key;
-      } else if (backIdVideoDataUrl) {
-        // console.warn("Back video DataURL existed but failed to convert to Blob."); // Removed
-      }
-
       const regResponse = await fetch('/api/save-registration', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1152,8 +1059,8 @@ export default function UserRegistrationForm() {
           email, 
           password,
           idDetails: combinedIdDetails,
-          frontIdVideoS3Key: frontVideoS3Key,
-          backIdVideoS3Key: backVideoS3Key
+          frontIdVideoS3Key: s3FrontKey,
+          backIdVideoS3Key: s3BackKey
         })
       });
       
@@ -1192,10 +1099,6 @@ export default function UserRegistrationForm() {
         alert("Error saving registration: " + (regData.error || "Unknown error"));
       }
     } catch (error) {
-      // logToScreen("Error during S3 upload or saving registration: " + error.toString(), 'error');
-      // logToScreen("Full error object: " + JSON.stringify(error, Object.getOwnPropertyNames(error)), 'error');
-      // console.error("Error during S3 upload or saving registration: " + error.toString()); // Removed
-      // console.error("Full error object: " + JSON.stringify(error, Object.getOwnPropertyNames(error))); // Removed
       setIsUploading(false);
       alert("A network error occurred, or the system was unable to save your registration. Please check your connection and try again. If the problem persists, note any error messages from the on-screen log.");
     } finally {
@@ -1472,7 +1375,7 @@ export default function UserRegistrationForm() {
                   : "bg-yellow-400 hover:bg-yellow-300"
               }`}
             >
-              {isUploading ? "Uploading..." : "Upload Videos to S3 (Test)"}
+              {isUploading ? "Uploading..." : "Proceed to face verification"}
             </button>
           </div>
         </div>
