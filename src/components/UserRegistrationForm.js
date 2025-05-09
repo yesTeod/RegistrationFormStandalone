@@ -1536,8 +1536,13 @@ export default function UserRegistrationForm() {
             {combinedIdDetails ? (
               <div>
                 <p>
-                  <strong>Name:</strong> {combinedIdDetails.name} {combinedIdDetails.fatherName}
+                  <strong>Full Name:</strong> {combinedIdDetails.fullName}
                 </p>
+                {combinedIdDetails.fatherName && combinedIdDetails.fatherName !== "Not found" && (
+                  <p>
+                    <strong>Father's Name:</strong> {combinedIdDetails.fatherName}
+                  </p>
+                )}
                 <p>
                   <strong>ID No:</strong> {combinedIdDetails.idNumber}
                 </p>
@@ -1547,6 +1552,27 @@ export default function UserRegistrationForm() {
                 <p>
                   <strong>Date of Birth:</strong> {combinedIdDetails.dateOfBirth}
                 </p>
+                 {/* Display other relevant fields from combinedIdDetails as needed */}
+                 {combinedIdDetails.nationality && combinedIdDetails.nationality !== "Not found" && (
+                  <p>
+                    <strong>Nationality:</strong> {combinedIdDetails.nationality}
+                  </p>
+                )}
+                {combinedIdDetails.gender && combinedIdDetails.gender !== "Not found" && (
+                  <p>
+                    <strong>Gender:</strong> {combinedIdDetails.gender}
+                  </p>
+                )}
+                {combinedIdDetails.issueDate && combinedIdDetails.issueDate !== "Not found" && (
+                  <p>
+                    <strong>Issue Date:</strong> {combinedIdDetails.issueDate}
+                  </p>
+                )}
+                {combinedIdDetails.placeOfBirth && combinedIdDetails.placeOfBirth !== "Not found" && (
+                  <p>
+                    <strong>Place of Birth:</strong> {combinedIdDetails.placeOfBirth}
+                  </p>
+                )}
               </div>
             ) : isExtracting ? (
               <div className="flex flex-col items-center justify-center">
@@ -1679,14 +1705,14 @@ export default function UserRegistrationForm() {
                 
                 {userData.idDetails && (
                   <>
-                    {/* Given Name from idDetails */}
-                    {userData.idDetails.name && userData.idDetails.name !== "Not found" &&
-                      <p><span className="font-medium">Given Name:</span> {userData.idDetails.name}</p>
+                    {/* Full Name from idDetails */}
+                    {userData.idDetails.fullName && userData.idDetails.fullName !== "Not found" &&
+                      <p><span className="font-medium">Full Name:</span> {userData.idDetails.fullName}</p>
                     }
 
-                    {/* Surname from idDetails (using fatherName field) */}
+                    {/* Father's Name from idDetails */}
                     {userData.idDetails.fatherName && userData.idDetails.fatherName !== "Not found" &&
-                      <p><span className="font-medium">Surname:</span> {userData.idDetails.fatherName}</p>
+                      <p><span className="font-medium">Father's Name:</span> {userData.idDetails.fatherName}</p>
                     }
 
                     {/* ID Number from idDetails */}
@@ -1712,6 +1738,10 @@ export default function UserRegistrationForm() {
                     {/* Issue Date from idDetails */}
                     {userData.idDetails.issueDate && userData.idDetails.issueDate !== "Not found" &&
                       <p><span className="font-medium">Issue Date:</span> {userData.idDetails.issueDate}</p>}
+
+                    {/* Place of Birth from idDetails */}
+                    {userData.idDetails.placeOfBirth && userData.idDetails.placeOfBirth !== "Not found" &&
+                      <p><span className="font-medium">Place of Birth:</span> {userData.idDetails.placeOfBirth}</p>}
                   </>
                 )}
                 
