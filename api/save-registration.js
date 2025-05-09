@@ -46,17 +46,21 @@ export default async function handler(req, res) {
 
     // Add ID details if provided
     if (idDetails) {
-      updateData.$set.idDetails = idDetails;
+      updateData.$set.idDetails = idDetails; // Save the raw idDetails object from extraction
       
-      if (idDetails.address && idDetails.address !== "Not found") {
-        updateData.$set.address = idDetails.address;
+      // For top-level convenience fields, use the new structure
+      if (idDetails.fullName && idDetails.fullName !== "Not found") {
+        updateData.$set.name = idDetails.fullName; // Store fullName under a general 'name' field
       }
-      if (idDetails.name && idDetails.name !== "Not found") {
-        updateData.$set.name = idDetails.name;
-      }
+      // fatherName is part of idDetails object, not usually a top-level convenience field unless specifically needed
+
       if (idDetails.dateOfBirth && idDetails.dateOfBirth !== "Not found") {
         updateData.$set.dateOfBirth = idDetails.dateOfBirth;
       }
+      // Remove address as it's no longer provided by extract-id.js
+      // if (idDetails.address && idDetails.address !== "Not found") {
+      //   updateData.$set.address = idDetails.address;
+      // }
       // Add any other important ID details from idDetails to $set if needed
     }
 
