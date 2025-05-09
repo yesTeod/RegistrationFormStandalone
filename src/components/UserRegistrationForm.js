@@ -992,16 +992,18 @@ export default function UserRegistrationForm() {
 
           if (frontUploadSuccess && localFrontS3Key) {
             try {
+              console.log(`[UserRegForm] Attempting to save front video key. Email: ${email}, Key: ${localFrontS3Key}`);
               const saveKeyResponse = await fetch('/api/save-video-keys', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ email: email, frontS3Key: localFrontS3Key }),
               });
+              const responseData = await saveKeyResponse.json();
+              console.log('[UserRegForm] Response from save front video key:', responseData);
               if (!saveKeyResponse.ok) {
-                const errorData = await saveKeyResponse.json().catch(() => ({}));
-                console.error('Failed to save front video key to DB:', saveKeyResponse.status, errorData.error || 'Unknown error');
+                console.error('Failed to save front video key to DB:', saveKeyResponse.status, responseData.error || 'Unknown error');
               } else {
-                console.log('Front video key saved to DB successfully.');
+                console.log('Front video key save API call successful.');
               }
             } catch (dbError) {
               console.error('Error calling API to save front video key:', dbError);
@@ -1051,16 +1053,18 @@ export default function UserRegistrationForm() {
 
           if (backUploadSuccess && localBackS3Key) {
             try {
+              console.log(`[UserRegForm] Attempting to save back video key. Email: ${email}, Key: ${localBackS3Key}`);
               const saveKeyResponse = await fetch('/api/save-video-keys', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ email: email, backS3Key: localBackS3Key }),
               });
+              const responseData = await saveKeyResponse.json();
+              console.log('[UserRegForm] Response from save back video key:', responseData);
               if (!saveKeyResponse.ok) {
-                const errorData = await saveKeyResponse.json().catch(() => ({}));
-                console.error('Failed to save back video key to DB:', saveKeyResponse.status, errorData.error || 'Unknown error');
+                console.error('Failed to save back video key to DB:', saveKeyResponse.status, responseData.error || 'Unknown error');
               } else {
-                console.log('Back video key saved to DB successfully.');
+                console.log('Back video key save API call successful.');
               }
             } catch (dbError) {
               console.error('Error calling API to save back video key:', dbError);
