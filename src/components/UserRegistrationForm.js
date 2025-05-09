@@ -1539,9 +1539,9 @@ export default function UserRegistrationForm() {
             </button>
             <button
               onClick={handleConfirmAndProceed}
-              disabled={isProcessingConfirmation || (!frontIdVideoDataUrl && !backIdVideoDataUrl)}
+              disabled={isProcessingConfirmation}
               className={`px-6 py-2 text-black transition shadow-md ${
-                (isProcessingConfirmation || (!frontIdVideoDataUrl && !backIdVideoDataUrl))
+                isProcessingConfirmation
                   ? "bg-gray-300 text-gray-500 cursor-not-allowed"
                   : "bg-yellow-400 hover:bg-yellow-300"
               }`}
