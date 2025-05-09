@@ -77,8 +77,10 @@ export default async function handler(req, res) {
       const updateQuery = { $set: { updatedAt: new Date() } };
       if (idSide === 'front') {
         updateQuery.$set.frontIdVideoS3Key = uniqueFileName;
-      } else { // idSide === 'back'
+      } else if ( idSide === 'back') {
         updateQuery.$set.backIdVideoS3Key = uniqueFileName;
+      } else if ( idSide === 'selfie') {
+        updateQuery.$set.selfieVideoS3Key = uniqueFileName;
       }
 
       const result = await collection.updateOne(
