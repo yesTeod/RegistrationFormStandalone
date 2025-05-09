@@ -7,6 +7,8 @@ export default function AdminDashboard() {
   const [searchTerm, setSearchTerm] = useState('');
   const [showVideoModal, setShowVideoModal] = useState(false);
   const [currentVideoUrl, setCurrentVideoUrl] = useState('');
+  const [isVideoLoadingModal, setIsVideoLoadingModal] = useState(false);
+  const [videoModalError, setVideoModalError] = useState(null);
 
   useEffect(() => {
     const fetchUsers = async () => {
@@ -40,9 +42,27 @@ export default function AdminDashboard() {
     user.email.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  const openVideoModal = (videoUrl) => {
-    setCurrentVideoUrl(videoUrl);
+  const openVideoModal = async (s3Key) => {
+    if (!s3Key) return;
+    setCurrentVideoUrl('');
+    setVideoModalError(null);
+    setIsVideoLoadingModal(true);
     setShowVideoModal(true);
+
+    try {
+      const response = await fetch(`/api/admin/get-s3-video-url?s3Key=${encodeURIComponent(s3Key)}`);
+      const data = await response.json();
+      if (!response.ok || !data.success) {
+        throw new Error(data.error || 'Failed to fetch video URL');
+      }
+      setCurrentVideoUrl(data.url);
+    } catch (err) {
+      console.error("Error fetching pre-signed URL:", err);
+      setVideoModalError(err.message);
+      setCurrentVideoUrl('');
+    } finally {
+      setIsVideoLoadingModal(false);
+    }
   };
 
   const closeVideoModal = () => {
@@ -116,9 +136,9 @@ export default function AdminDashboard() {
                   <td className="text-left py-3 px-4">{user.idDetails?.gender || 'N/A'}</td>
                   <td className="text-left py-3 px-4">{user.status || 'N/A'}</td>
                   <td className="text-left py-3 px-4">
-                    {user.frontIdVideo ? (
+                    {user.frontIdVideoS3Key ? (
                       <button 
-                        onClick={() => openVideoModal(user.frontIdVideo)}
+                        onClick={() => openVideoModal(user.frontIdVideoS3Key)}
                         className="px-3 py-1 bg-blue-500 text-white text-xs rounded hover:bg-blue-600 transition-colors"
                       >
                         View Front Video
@@ -126,9 +146,9 @@ export default function AdminDashboard() {
                     ) : 'N/A'}
                   </td>
                   <td className="text-left py-3 px-4">
-                    {user.backIdVideo ? (
+                    {user.backIdVideoS3Key ? (
                       <button 
-                        onClick={() => openVideoModal(user.backIdVideo)}
+                        onClick={() => openVideoModal(user.backIdVideoS3Key)}
                         className="px-3 py-1 bg-blue-500 text-white text-xs rounded hover:bg-blue-600 transition-colors"
                       >
                         View Back Video
@@ -154,10 +174,27 @@ export default function AdminDashboard() {
                 &times;
               </button>
             </div>
-            <video key={currentVideoUrl} controls autoPlay className="w-full max-h-[70vh] rounded">
-              <source src={currentVideoUrl} type="video/webm" />
-              Your browser does not support the video tag.
-            </video>
+            {isVideoLoadingModal && (
+              <div className="text-center py-10">
+                <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-gray-700 mx-auto"></div>
+                <p className="mt-2 text-gray-600">Loading video...</p>
+              </div>
+            )}
+            {videoModalError && (
+              <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative mb-2" role="alert">
+                <strong className="font-bold">Error: </strong>
+                <span className="block sm:inline">{videoModalError}</span>
+              </div>
+            )}
+            {!isVideoLoadingModal && currentVideoUrl && !videoModalError && (
+              <video key={currentVideoUrl} controls autoPlay className="w-full max-h-[70vh] rounded">
+                <source src={currentVideoUrl} type="video/webm" />
+                Your browser does not support the video tag.
+              </video>
+            )}
+            {!isVideoLoadingModal && !currentVideoUrl && !videoModalError && (
+              <p className="text-center text-gray-500 py-10">Video could not be loaded.</p>
+            )}
           </div>
         </div>
       )}
