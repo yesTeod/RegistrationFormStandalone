@@ -41,6 +41,9 @@ export default function UserRegistrationForm() {
   const [s3BackKey, setS3BackKey] = useState(null);
   const [selfieVideoDataUrl, setSelfieVideoDataUrl] = useState(null);
   const [s3SelfieKey, setS3SelfieKey] = useState(null);
+  const [idDetectionStatus, setIdDetectionStatus] = useState("idle");
+  const [idDetectionMessage, setIdDetectionMessage] = useState("Align ID card within the frame.");
+  const [idGuideBoxColor, setIdGuideBoxColor] = useState("rgba(250, 204, 21, 0.8)");
 
   const videoRef = useRef(null);
   const faceVideoRef = useRef(null);
@@ -56,6 +59,7 @@ export default function UserRegistrationForm() {
   const selfieMediaRecorderRef = useRef(null);
   const selfieRecordedChunksRef = useRef([]);
   const selfieVideoTimerIdRef = useRef(null);
+  const idCheckIntervalRef = useRef(null);
 
   const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -932,6 +936,28 @@ export default function UserRegistrationForm() {
   }, [isFlipping, step, containerRef.current]);
 
   useEffect(() => {
+    // Reset ID detection state when moving to a camera step
+    if (step === "camera" || step === "cameraBack") {
+      setIdDetectionStatus("idle");
+      setIdDetectionMessage("Align ID card within the frame.");
+      setIdGuideBoxColor("rgba(250, 204, 21, 0.8)"); // Default yellow
+    }
+
+    if ((step === "camera" || step === "cameraBack") && cameraStatus === "active" && videoRef.current) {
+      clearInterval(idCheckIntervalRef.current); // Clear any existing interval
+      idCheckIntervalRef.current = setInterval(() => {
+        checkIdPositionAgainstServer();
+      }, 2000); // Check every 2 seconds
+    } else {
+      clearInterval(idCheckIntervalRef.current);
+    }
+
+    return () => {
+      clearInterval(idCheckIntervalRef.current);
+    };
+  }, [step, cameraStatus]); // Rerun when step or cameraStatus changes
+
+  useEffect(() => {
     return () => {
       stopCamera();
     };
@@ -1258,6 +1284,73 @@ export default function UserRegistrationForm() {
     selfieRecordedChunksRef.current = [];
   };
 
+  const checkIdPositionAgainstServer = async () => {
+    if (!videoRef.current || !canvasRef.current || videoRef.current.paused || videoRef.current.ended || videoRef.current.readyState < 3) {
+      return; // Video not ready
+    }
+    if (idDetectionStatus === "checking") {
+      return; // Already checking
+    }
+
+    setIdDetectionStatus("checking");
+    setIdDetectionMessage("Verifying ID position...");
+
+    const canvas = canvasRef.current;
+    const video = videoRef.current;
+    canvas.width = video.videoWidth || 320;
+    canvas.height = video.videoHeight || 240;
+    const context = canvas.getContext("2d");
+    context.drawImage(video, 0, 0, canvas.width, canvas.height);
+    const imageDataUrl = canvas.toDataURL("image/jpeg", 0.8); // Use JPEG for smaller size
+
+    try {
+      const response = await fetch('/api/check-id-position', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ image: imageDataUrl }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ message: 'Server error during ID check.' }));
+        throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
+      }
+
+      const data = await response.json();
+
+      if (data.success) {
+        setIdDetectionMessage(data.message || "Status updated.");
+        switch (data.status) {
+          case "DETECTED_GOOD_POSITION":
+            setIdDetectionStatus("detected_good");
+            setIdGuideBoxColor("rgba(74, 222, 128, 0.8)"); // Green
+            break;
+          case "DETECTED_BAD_POSITION":
+            setIdDetectionStatus("detected_bad");
+            setIdGuideBoxColor("rgba(251, 146, 60, 0.8)"); // Orange
+            break;
+          case "NOT_DETECTED":
+            setIdDetectionStatus("not_detected");
+            setIdGuideBoxColor("rgba(250, 204, 21, 0.8)"); // Yellow
+            break;
+          default:
+            setIdDetectionStatus("error");
+            setIdGuideBoxColor("rgba(239, 68, 68, 0.8)"); // Red
+            setIdDetectionMessage(data.message || "Unknown status from server.");
+        }
+      } else {
+        setIdDetectionStatus("error");
+        setIdGuideBoxColor("rgba(239, 68, 68, 0.8)"); // Red
+        setIdDetectionMessage(data.message || "Failed to check ID position.");
+      }
+
+    } catch (error) {
+      setIdDetectionStatus("error");
+      setIdGuideBoxColor("rgba(239, 68, 68, 0.8)"); // Red
+      setIdDetectionMessage(error.message || "Error checking ID position. Check connection.");
+      console.error("Error in checkIdPositionAgainstServer:", error);
+    }
+  };
+
   return (
     <div
       ref={containerRef}
@@ -1323,14 +1416,16 @@ export default function UserRegistrationForm() {
               className="w-full h-full object-cover rounded"
             />
             <div 
-              className="absolute border-2 border-dashed border-yellow-400"
+              className="absolute border-2 border-dashed rounded-md" 
               style={{
-                width: "80%",
-                height: "70%",
+                borderColor: idGuideBoxColor,
+                width: "80%", 
+                height: "70%", 
                 top: "50%",
                 left: "50%",
                 transform: "translate(-50%, -50%)",
-                pointerEvents: "none"
+                pointerEvents: "none",
+                boxShadow: `0 0 15px ${idGuideBoxColor.replace("0.8", "0.5")}`
               }}
             ></div>
             <canvas
@@ -1340,10 +1435,16 @@ export default function UserRegistrationForm() {
               className="hidden"
             />
           </div>
+          <p className="text-sm text-gray-600 -mt-2 min-h-[20px]">{idDetectionMessage}</p>
           <div className="flex flex-col md:flex-row justify-center gap-3 mt-4">
             <button
               onClick={capturePhoto}
-              className="bg-yellow-400 hover:bg-yellow-300 text-black px-4 py-2 rounded-full shadow-md"
+              disabled={idDetectionStatus !== "detected_good" || cameraStatus !== "active"}
+              className={`px-4 py-2 rounded-full shadow-md transition-colors ${
+                idDetectionStatus === "detected_good" && cameraStatus === "active"
+                  ? "bg-yellow-400 hover:bg-yellow-300 text-black"
+                  : "bg-gray-300 text-gray-500 cursor-not-allowed"
+              }`}
             >
               Capture Front
             </button>
@@ -1380,14 +1481,16 @@ export default function UserRegistrationForm() {
               className="w-full h-full object-cover rounded"
             />
             <div 
-              className="absolute border-2 border-dashed border-yellow-400"
+              className="absolute border-2 border-dashed rounded-md" 
               style={{
-                width: "80%",
-                height: "70%",
+                borderColor: idGuideBoxColor,
+                width: "80%", 
+                height: "70%", 
                 top: "50%",
                 left: "50%",
                 transform: "translate(-50%, -50%)",
-                pointerEvents: "none"
+                pointerEvents: "none",
+                boxShadow: `0 0 15px ${idGuideBoxColor.replace("0.8", "0.5")}`
               }}
             ></div>
             <canvas
@@ -1397,10 +1500,16 @@ export default function UserRegistrationForm() {
               className="hidden"
             />
           </div>
+          <p className="text-sm text-gray-600 -mt-2 min-h-[20px]">{idDetectionMessage}</p>
           <div className="flex flex-col md:flex-row justify-center gap-3 mt-4">
             <button
               onClick={captureBackPhoto}
-              className="bg-yellow-400 hover:bg-yellow-300 text-black px-4 py-2 rounded-full shadow-md"
+              disabled={idDetectionStatus !== "detected_good" || cameraStatus !== "active"}
+              className={`px-4 py-2 rounded-full shadow-md transition-colors ${
+                idDetectionStatus === "detected_good" && cameraStatus === "active"
+                  ? "bg-yellow-400 hover:bg-yellow-300 text-black"
+                  : "bg-gray-300 text-gray-500 cursor-not-allowed"
+              }`}
             >
               Capture Back
             </button>
