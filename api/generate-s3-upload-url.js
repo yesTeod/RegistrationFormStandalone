@@ -62,8 +62,8 @@ export default async function handler(req, res) {
     if (!fileType || !email || !idSide) {
       return res.status(400).json({ success: false, error: "fileType, email, and idSide are required" });
     }
-    if (idSide !== 'front' && idSide !== 'back') {
-      return res.status(400).json({ success: false, error: "idSide must be 'front' or 'back'" });
+    if (idSide !== 'front' && idSide !== 'back' && idSide !== 'selfie') {
+      return res.status(400).json({ success: false, error: "idSide must be 'front' or 'back' or 'selfie'" });
     }
 
     const fileExtension = fileType.split('/')[1] || 'bin'; 
