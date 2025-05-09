@@ -37,8 +37,6 @@ export default function UserRegistrationForm() {
   const [userData, setUserData] = useState(null);
   const [frontIdVideoDataUrl, setFrontIdVideoDataUrl] = useState(null);
   const [backIdVideoDataUrl, setBackIdVideoDataUrl] = useState(null);
-  const [debugLogs, setDebugLogs] = useState([]);
-  const [isProcessingConfirmation, setIsProcessingConfirmation] = useState(false);
 
   const videoRef = useRef(null);
   const faceVideoRef = useRef(null);
@@ -78,15 +76,12 @@ export default function UserRegistrationForm() {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
       reader.onloadend = () => {
-        
         resolve(reader.result);
       };
       reader.onerror = (error) => {
-        
         reject(error);
       };
       reader.readAsDataURL(blob);
-      
     });
   };
 
@@ -120,7 +115,6 @@ export default function UserRegistrationForm() {
       const data = await response.json();
       
       if (response.ok && data.success) {
-        
         setUserData(data);
         if (data.isAdmin) {
           handleFlip("adminDashboard", "right");
@@ -128,16 +122,13 @@ export default function UserRegistrationForm() {
           handleFlip("loggedIn", "right");
         }
       } else if (data.code === 'EMAIL_NOT_FOUND') {
-        
         handleFlip("camera", "right");
       } else if (data.code === 'INCORRECT_PASSWORD') {
         setLoginError("Incorrect password");
       } else {
         setLoginError(data.error || "Login failed");
-        
       }
     } catch (error) {
-      
       setLoginError("Network error, please try again");
     } finally {
       setIsCheckingUser(false);
@@ -146,23 +137,17 @@ export default function UserRegistrationForm() {
 
   const capturePhoto = async () => {
     if (mediaRecorderRef.current && mediaRecorderRef.current.state === "recording") {
-      
       mediaRecorderRef.current.onstop = async () => {
-        
         const videoBlob = new Blob(recordedChunksRef.current, { type: 'video/webm' });
-        
 
         if (videoBlob.size > 0) {
           try {
             const videoDataUrl = await blobToDataURL(videoBlob);
             setFrontIdVideoDataUrl(videoDataUrl);
-            
           } catch (error) {
-            
             setFrontIdVideoDataUrl(null);
           }
         } else {
-          
           setFrontIdVideoDataUrl(null);
         }
         recordedChunksRef.current = [];
@@ -183,7 +168,6 @@ export default function UserRegistrationForm() {
         handleFlip("cameraBack", "right");
       };
       mediaRecorderRef.current.stop();
-      
     } else {
       setFrontIdVideoDataUrl(null); // Ensure it's null if not recorded
       // Fallback if MediaRecorder wasn't active (e.g., browser incompatibility)
@@ -204,18 +188,14 @@ export default function UserRegistrationForm() {
 
   const captureBackPhoto = async () => {
     if (mediaRecorderRef.current && mediaRecorderRef.current.state === "recording") {
-      
       mediaRecorderRef.current.onstop = async () => {
-        
         const videoBlob = new Blob(recordedChunksRef.current, { type: 'video/webm' });
 
         if (videoBlob.size > 0) {
           try {
             const videoDataUrl = await blobToDataURL(videoBlob);
             setBackIdVideoDataUrl(videoDataUrl);
-            
           } catch (error) {
-            
             setBackIdVideoDataUrl(null);
           }
         } else {
@@ -239,7 +219,6 @@ export default function UserRegistrationForm() {
         handleFlip("completed", "right");
       };
       mediaRecorderRef.current.stop();
-      
     } else {
       setBackIdVideoDataUrl(null); // Ensure it's null if not recorded
       // Fallback if MediaRecorder wasn't active
@@ -274,7 +253,6 @@ export default function UserRegistrationForm() {
       };
       reader.readAsDataURL(file);
     } catch (error) {
-      
     } finally {
       setIsUploading(false);
     }
@@ -296,7 +274,6 @@ export default function UserRegistrationForm() {
       };
       reader.readAsDataURL(file);
     } catch (error) {
-      
     } finally {
       setIsUploading(false);
     }
@@ -338,6 +315,49 @@ export default function UserRegistrationForm() {
         }
         setCameraAvailable(true);
         setCameraStatus("active");
+
+        // Start MediaRecorder if this is for ID capture (not face verification)
+        if ((currentStep === "camera" || currentStep === "cameraBack") && window.MediaRecorder) {
+          recordedChunksRef.current = []; // Clear previous chunks
+          try {
+            const MimeTypesToTry = [
+              'video/webm;codecs=vp9',
+              'video/webm;codecs=vp8',
+              'video/webm',
+              'video/mp4;codecs=h264', // May not be widely supported for recording
+              'video/mp4'             // May not be widely supported for recording
+            ];
+            let supportedMimeType = '';
+
+            for (const mimeType of MimeTypesToTry) {
+              if (MediaRecorder.isTypeSupported(mimeType)) {
+                supportedMimeType = mimeType;
+                break;
+              }
+            }
+
+            if (!supportedMimeType) {
+              mediaRecorderRef.current = null;
+              return; // Exit if no supported MIME type
+            }
+
+            mediaRecorderRef.current = new MediaRecorder(stream, { mimeType: supportedMimeType });
+            mediaRecorderRef.current.ondataavailable = (event) => {
+              if (event.data.size > 0) {
+                recordedChunksRef.current.push(event.data);
+              }
+            };
+            mediaRecorderRef.current.onstart = () => {
+            };
+            mediaRecorderRef.current.onstop = () => {
+            };
+            mediaRecorderRef.current.onerror = (event) => {
+            };
+            mediaRecorderRef.current.start();
+          } catch (e) {
+            mediaRecorderRef.current = null;
+          }
+        }
       })
       .catch((err) => {
         setCameraAvailable(false);
@@ -352,7 +372,6 @@ export default function UserRegistrationForm() {
       mediaRecorderRef.current.stop();
       recordedChunksRef.current = []; // Clear chunks as we are not saving this video
     } else if (mediaRecorderRef.current) {
-      
     }
     mediaRecorderRef.current = null;
 
@@ -360,8 +379,6 @@ export default function UserRegistrationForm() {
     if (stream) {
       stream.getTracks().forEach((track) => track.stop());
       streamRef.current = null;
-    } else {
-      
     }
   };
 
@@ -371,8 +388,6 @@ export default function UserRegistrationForm() {
     if (stream) {
       stream.getTracks().forEach((track) => track.stop());
       streamRef.current = null;
-    } else {
-      
     }
   };
 
@@ -385,7 +400,6 @@ export default function UserRegistrationForm() {
     setCombinedIdDetails(null);
     setFrontIdVideoDataUrl(null);
     setBackIdVideoDataUrl(null);
-    
 
     await handleFlip("camera", "left");
     await delay(50);
@@ -486,7 +500,6 @@ export default function UserRegistrationForm() {
         }
       }
     } catch (e) {
-      console.error('Liveness check error:', e);
     }
   };
 
@@ -596,7 +609,6 @@ export default function UserRegistrationForm() {
       if (!resp.ok) {
         // Handle HTTP error responses (e.g., 400 Bad Request)
         const errorData = await resp.json().catch(() => ({ error: 'Unknown error' }));
-        console.error("Face verification failed:", resp.status, errorData);
         setFaceVerified(false);
         setVerificationAttempts(prev => prev + 1);
         setShowRetryOptions(true);
@@ -620,7 +632,6 @@ export default function UserRegistrationForm() {
         }
       }
     } catch (err) {
-      console.error("Face verification error:", err);
       setFaceVerified(false);
       setVerificationAttempts(prev => prev + 1);
       setShowRetryOptions(true);
@@ -688,11 +699,9 @@ export default function UserRegistrationForm() {
       }
       const data = await response.json();
       if (data.error) {
-        console.warn("API returned an error:", data.error);
       }
       return data;
     } catch (error) {
-      console.error("Error extracting ID details:", error);
       return {
         name: "Not found",
         idNumber: "Not found",
@@ -706,11 +715,9 @@ export default function UserRegistrationForm() {
   useEffect(() => {
     if (step === "completed" && photoFront && photoBack && !idDetails && !backIdDetails && !isExtracting) {
       extractIdDetails(photoFront, true).then((frontDetails) => {
-        
         setIdDetails(frontDetails);
         
         extractIdDetails(photoBack, true).then((backDetails) => {
-          
           setBackIdDetails(backDetails);
           
           const combined = {};
@@ -739,11 +746,9 @@ export default function UserRegistrationForm() {
 
   useEffect(() => {
     if (step === "camera") {
-      
       startCamera("environment", videoRef);
     }
     if (step === "cameraBack") {
-      
       startCamera("environment", videoRef);
     }
   }, [step]);
@@ -943,32 +948,25 @@ export default function UserRegistrationForm() {
 
   const saveVideoKeysToDatabase = async (frontKey, backKey) => {
     if (!frontKey && !backKey) {
-      console.info("[DB Save] No S3 keys provided, skipping database save.");
-      return { success: true, message: "No keys to save." }; // Or consider this a non-error scenario
+      return { success: true, message: "No keys to save." };
     }
-    console.log(`[DB Save] Attempting to save S3 keys to DB: Front - ${frontKey}, Back - ${backKey}`);
     try {
       const response = await fetch('/api/save-video-keys', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        // Include email if you want to associate these keys with the user
-        // For now, make sure 'email' state is accessible here if you uncomment
         body: JSON.stringify({ 
           frontS3Key: frontKey, 
           backS3Key: backKey, 
-          email: email // Assuming 'email' is from component state and accessible
+          email: email
         }),
       });
       const data = await response.json();
       if (response.ok && data.success) {
-        console.log("[DB Save] S3 keys successfully sent to API.", data.message);
         return { success: true, message: data.message };
       } else {
-        console.error("[DB Save] API Error:", data.error || response.statusText);
         return { success: false, message: data.error || `API request failed with status ${response.status}` };
       }
     } catch (error) {
-      console.error("[DB Save] Network or other error saving S3 keys:", error);
       return { success: false, message: error.message || "Network error during DB save." };
     }
   };
@@ -986,7 +984,6 @@ export default function UserRegistrationForm() {
 
     setIsUploading(true);
 
-    // --- Upload Front ID Video ---    
     if (frontIdVideoDataUrl) {
       const frontVideoBlob = dataURLtoBlob(frontIdVideoDataUrl);
       if (frontVideoBlob) {
@@ -1027,7 +1024,6 @@ export default function UserRegistrationForm() {
       }
     }
 
-    // --- Upload Back ID Video ---    
     if (backIdVideoDataUrl) {
       const backVideoBlob = dataURLtoBlob(backIdVideoDataUrl);
       if (backVideoBlob) {
@@ -1068,24 +1064,22 @@ export default function UserRegistrationForm() {
       }
     }
     
-    // --- Save Keys to Database --- 
     let dbSaveResult = { success: false, message: "DB save not attempted." };
-    if (frontUploadSuccess || backUploadSuccess) { // Only attempt DB save if at least one video uploaded
+    if (frontUploadSuccess || backUploadSuccess) {
       dbSaveResult = await saveVideoKeysToDatabase(frontS3Key, backS3Key);
     }
 
     setIsUploading(false);
 
-    // --- Final Alerting --- 
     let alertMessage = "";
-    if (frontIdVideoDataUrl && backIdVideoDataUrl) { // Both were attempted
+    if (frontIdVideoDataUrl && backIdVideoDataUrl) {
         if (frontUploadSuccess && backUploadSuccess) alertMessage = `Both videos uploaded successfully!\nFront Key: ${frontS3Key}\nBack Key: ${backS3Key}`;
         else if (frontUploadSuccess) alertMessage = `Front video uploaded (Key: ${frontS3Key}). Back video failed.`;
         else if (backUploadSuccess) alertMessage = `Back video uploaded (Key: ${backS3Key}). Front video failed.`;
         else alertMessage = "Both video uploads failed.";
-    } else if (frontIdVideoDataUrl) { // Only front was attempted
+    } else if (frontIdVideoDataUrl) {
         alertMessage = frontUploadSuccess ? `Front video uploaded successfully! Key: ${frontS3Key}` : "Front video upload failed.";
-    } else if (backIdVideoDataUrl) { // Only back was attempted
+    } else if (backIdVideoDataUrl) {
         alertMessage = backUploadSuccess ? `Back video uploaded successfully! Key: ${backS3Key}` : "Back video upload failed.";
     } else {
         alertMessage = "No videos were provided to upload."; 
@@ -1095,33 +1089,11 @@ export default function UserRegistrationForm() {
         alertMessage += `\n\nDatabase save: ${dbSaveResult.success ? "Success" : "Failed (" + dbSaveResult.message + ")"}`;
     }
     
-    // Add a general instruction to check console if any part failed
     if (!frontUploadSuccess || !backUploadSuccess || ( (frontUploadSuccess || backUploadSuccess) && !dbSaveResult.success)) {
         alertMessage += "\n(Check console for more error details if any step failed.)";
     }
 
     alert(alertMessage);
-  };
-
-  const handleConfirmAndProceed = async () => {
-    setIsProcessingConfirmation(true);
-
-    // Check if there are videos to upload. This check is also in the button's disabled logic.
-    if (frontIdVideoDataUrl || backIdVideoDataUrl) {
-      // Await the upload attempt. Proceed regardless of its internal success/failure,
-      // but after it has completed its execution (including any alerts).
-      await handleDirectS3Upload(); 
-    } else {
-      // This case should ideally not be reached if the button is disabled when no videos.
-      // If it can be reached, logging is appropriate.
-      console.log("No videos available to upload. Proceeding to verification.");
-    }
-    
-    // Proceed to face verification step by calling handleSubmit.
-    await handleSubmit(); 
-
-    // No need to set setIsProcessingConfirmation(false) as the step will change,
-    // effectively removing this button or this part of the component.
   };
 
   const saveRegistration = async () => {
@@ -1131,16 +1103,13 @@ export default function UserRegistrationForm() {
 
     let frontVideoS3Key = null;
     let backVideoS3Key = null;
-    const videoFileType = 'video/mp4'; // Determined from previous logs
+    const videoFileType = 'video/mp4';
 
-    setIsUploading(true); // Use a general uploading/processing state
-    
+    setIsUploading(true);
 
     try {
-      // Upload Front ID Video to S3 if it exists
       const frontVideoBlob = dataURLtoBlob(frontIdVideoDataUrl);
       if (frontVideoBlob) {
-        
         const presignedResponseFront = await fetch('/api/generate-s3-upload-url', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -1151,7 +1120,6 @@ export default function UserRegistrationForm() {
         if (!presignedResponseFront.ok || !presignedDataFront.success) {
           throw new Error(presignedDataFront.error || "Failed to get S3 pre-signed URL for front video");
         }
-        
 
         const formDataFront = new FormData();
         Object.entries(presignedDataFront.fields).forEach(([key, value]) => {
@@ -1159,7 +1127,6 @@ export default function UserRegistrationForm() {
         });
         formDataFront.append("file", frontVideoBlob);
 
-        
         const s3UploadResponseFront = await fetch(presignedDataFront.url, {
           method: 'POST',
           body: formDataFront,
@@ -1167,19 +1134,15 @@ export default function UserRegistrationForm() {
 
         if (!s3UploadResponseFront.ok) {
           const errorText = await s3UploadResponseFront.text();
-          
-          throw new Error(`S3 upload failed for front video: ${s3UploadResponseFront.status}`);
+          throw new Error(`S3 upload failed for front video: ${s3UploadResponseFront.status} - ${errorText}`);
         }
         frontVideoS3Key = presignedDataFront.key;
-        
       } else if (frontIdVideoDataUrl) {
-        
+        console.warn("Front video DataURL existed but failed to convert to Blob.");
       }
 
-      // Upload Back ID Video to S3 if it exists
       const backVideoBlob = dataURLtoBlob(backIdVideoDataUrl);
       if (backVideoBlob) {
-        
         const presignedResponseBack = await fetch('/api/generate-s3-upload-url', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -1190,7 +1153,6 @@ export default function UserRegistrationForm() {
         if (!presignedResponseBack.ok || !presignedDataBack.success) {
           throw new Error(presignedDataBack.error || "Failed to get S3 pre-signed URL for back video");
         }
-        
 
         const formDataBack = new FormData();
         Object.entries(presignedDataBack.fields).forEach(([key, value]) => {
@@ -1198,7 +1160,6 @@ export default function UserRegistrationForm() {
         });
         formDataBack.append("file", backVideoBlob);
 
-        
         const s3UploadResponseBack = await fetch(presignedDataBack.url, {
           method: 'POST',
           body: formDataBack,
@@ -1206,17 +1167,13 @@ export default function UserRegistrationForm() {
 
         if (!s3UploadResponseBack.ok) {
           const errorText = await s3UploadResponseBack.text();
-          
-          throw new Error(`S3 upload failed for back video: ${s3UploadResponseBack.status}`);
+          throw new Error(`S3 upload failed for back video: ${s3UploadResponseBack.status} - ${errorText}`);
         }
         backVideoS3Key = presignedDataBack.key;
-        
       } else if (backIdVideoDataUrl) {
-        
+        console.warn("Back video DataURL existed but failed to convert to Blob.");
       }
 
-      // Now save registration with S3 keys
-      
       const regResponse = await fetch('/api/save-registration', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1224,8 +1181,8 @@ export default function UserRegistrationForm() {
           email, 
           password,
           idDetails: combinedIdDetails,
-          frontIdVideoS3Key: frontVideoS3Key, // Send S3 key
-          backIdVideoS3Key: backVideoS3Key    // Send S3 key
+          frontIdVideoS3Key: frontVideoS3Key,
+          backIdVideoS3Key: backVideoS3Key
         })
       });
       
@@ -1233,8 +1190,6 @@ export default function UserRegistrationForm() {
       
       if (regResponse.ok && regData.success) {
         
-        
-        // Attempt to login the user automatically
         try {
           const loginResponse = await fetch('/api/login', {
             method: 'POST',
@@ -1244,22 +1199,19 @@ export default function UserRegistrationForm() {
           const loginData = await loginResponse.json();
 
           if (loginResponse.ok && loginData.success) {
-            
-            setUserData(loginData); // Use login data to set the user session
+            setUserData(loginData);
             if (loginData.isAdmin) {
               handleFlip("adminDashboard", "right");
             } else {
-              handleFlip("loggedIn", "right"); // Go to the loggedIn step (dashboard)
+              handleFlip("loggedIn", "right");
             }
           } else {
-            
             alert("Registration was successful, but auto-login failed. Please try logging in manually.");
-            handleFlip("form", "left"); // Go back to form if auto-login fails
+            handleFlip("form", "left");
           }
         } catch (loginError) {
-          
           alert("Registration was successful, but an error occurred during auto-login. Please try logging in manually.");
-          handleFlip("form", "left"); // Go back to form if auto-login fails
+          handleFlip("form", "left");
         }
 
       } else if (regData.code === 'USER_EXISTS') {
@@ -1269,12 +1221,12 @@ export default function UserRegistrationForm() {
         alert("Error saving registration: " + (regData.error || "Unknown error"));
       }
     } catch (error) {
-      
-      
+      console.error("Error during S3 upload or saving registration: " + error.toString());
+      console.error("Full error object: " + JSON.stringify(error, Object.getOwnPropertyNames(error)));
       setIsUploading(false);
       alert("A network error occurred, or the system was unable to save your registration. Please check your connection and try again. If the problem persists, note any error messages from the on-screen log.");
     } finally {
-      setIsUploading(false); // Ensure this is always called
+      setIsUploading(false);
     }
   };
 
@@ -1284,6 +1236,8 @@ export default function UserRegistrationForm() {
       className={`p-6 ${step === "adminDashboard" ? "max-w-[75%]" : "max-w-md"} mx-auto bg-gradient-to-br from-gray-100 to-gray-300 rounded-3xl shadow-xl transition-transform duration-300 relative border border-gray-300 will-change-transform`}
     >
       <style>{`button { border-radius: 10px !important; }`}</style>
+      
+     
 
       {step === "form" && (
         <div className="space-y-4">
@@ -1538,15 +1492,15 @@ export default function UserRegistrationForm() {
               Retake Photos
             </button>
             <button
-              onClick={handleConfirmAndProceed}
-              disabled={isProcessingConfirmation}
+              onClick={handleDirectS3Upload}
+              disabled={isUploading || (!frontIdVideoDataUrl && !backIdVideoDataUrl)}
               className={`px-6 py-2 text-black transition shadow-md ${
-                isProcessingConfirmation
+                (isUploading || (!frontIdVideoDataUrl && !backIdVideoDataUrl))
                   ? "bg-gray-300 text-gray-500 cursor-not-allowed"
                   : "bg-yellow-400 hover:bg-yellow-300"
               }`}
             >
-              {isProcessingConfirmation ? "Processing..." : "Confirm & Proceed to Verification"}
+              {isUploading ? "Uploading..." : "Upload Videos to S3 (Test)"}
             </button>
           </div>
         </div>
