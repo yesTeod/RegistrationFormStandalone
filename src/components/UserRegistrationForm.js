@@ -44,6 +44,7 @@ export default function UserRegistrationForm() {
   const [idDetectionStatus, setIdDetectionStatus] = useState("idle");
   const [idDetectionMessage, setIdDetectionMessage] = useState("Align ID card within the frame.");
   const [idGuideBoxColor, setIdGuideBoxColor] = useState("rgba(250, 204, 21, 0.8)");
+  const [isCompletingVerification, setIsCompletingVerification] = useState(false);
 
   const videoRef = useRef(null);
   const faceVideoRef = useRef(null);
@@ -741,6 +742,7 @@ export default function UserRegistrationForm() {
       // If face is verified, attempt to upload selfie video before saving registration
       if (selfieVideoDataUrl) {
         setIsUploading(true); // Indicate upload activity
+        setIsCompletingVerification(true); // Start loading for continue button
         console.log("[UserRegForm] Processing selfie video for S3...");
         const selfieResult = await processVideoForS3(selfieVideoDataUrl, 'selfie', email);
         if (selfieResult.success && selfieResult.s3Key) {
@@ -752,10 +754,15 @@ export default function UserRegistrationForm() {
         }
         setIsUploading(false);
       } else {
+        setIsCompletingVerification(true); // Start loading for continue button, even if no selfie video
         console.log("[UserRegForm] No selfie video data to upload.");
       }
       // Save the registration with ID details (and potentially selfie S3 key if backend handles it via email association)
-      saveRegistration();
+      try {
+        await saveRegistration();
+      } finally {
+        setIsCompletingVerification(false); // Stop loading for continue button
+      }
     } else {
       // If face verification failed definitively, show the failure screen
       if (verificationAttempts >= 3) {
@@ -1011,9 +1018,16 @@ export default function UserRegistrationForm() {
             <p className="text-green-600 text-sm">Your face has been successfully matched with your ID.</p>
             <button 
               onClick={handleVerificationComplete}
-              className="mt-3 px-5 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg shadow transition-colors"
+              disabled={isCompletingVerification}
+              className="mt-3 px-5 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg shadow transition-colors flex items-center justify-center"
             >
-              Continue
+              {isCompletingVerification ? (
+                <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+              ) : null}
+              {isCompletingVerification ? "Processing..." : "Continue"}
             </button>
           </div>
         )}
@@ -1568,11 +1582,6 @@ export default function UserRegistrationForm() {
                     <strong>Issue Date:</strong> {combinedIdDetails.issueDate}
                   </p>
                 )}
-                {combinedIdDetails.placeOfBirth && combinedIdDetails.placeOfBirth !== "Not found" && (
-                  <p>
-                    <strong>Place of Birth:</strong> {combinedIdDetails.placeOfBirth}
-                  </p>
-                )}
               </div>
             ) : isExtracting ? (
               <div className="flex flex-col items-center justify-center">
@@ -1738,10 +1747,6 @@ export default function UserRegistrationForm() {
                     {/* Issue Date from idDetails */}
                     {userData.idDetails.issueDate && userData.idDetails.issueDate !== "Not found" &&
                       <p><span className="font-medium">Issue Date:</span> {userData.idDetails.issueDate}</p>}
-
-                    {/* Place of Birth from idDetails */}
-                    {userData.idDetails.placeOfBirth && userData.idDetails.placeOfBirth !== "Not found" &&
-                      <p><span className="font-medium">Place of Birth:</span> {userData.idDetails.placeOfBirth}</p>}
                   </>
                 )}
                 
