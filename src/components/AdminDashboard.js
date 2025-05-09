@@ -234,7 +234,7 @@ export default function AdminDashboard() {
             }
           }}
         >
-          <div className="bg-white p-4 rounded-lg shadow-xl max-w-xl w-full">
+          <div className="bg-white p-4 rounded-lg shadow-xl max-w-xl w-full max-h-[90vh] overflow-y-auto">
             <div className="flex justify-between items-center mb-2">
               <h3 className="text-lg font-semibold">ID Capture Video</h3>
               <button 
