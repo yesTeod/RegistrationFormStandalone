@@ -248,6 +248,14 @@ export default function AdminDashboard() {
                             <h4 className="font-semibold text-gray-700 mb-1">Gender:</h4>
                             <p className="text-gray-600">{user.idDetails?.gender || 'N/A'}</p>
                           </div>
+                          <div>
+                            <h4 className="font-semibold text-gray-700 mb-1">Issue Date:</h4>
+                            <p className="text-gray-600">{user.idDetails?.issueDate || 'N/A'}</p>
+                          </div>
+                          <div>
+                            <h4 className="font-semibold text-gray-700 mb-1">Nationality:</h4>
+                            <p className="text-gray-600">{user.idDetails?.nationality || 'N/A'}</p>
+                          </div>
                         </div>
                       </td>
                     </tr>
