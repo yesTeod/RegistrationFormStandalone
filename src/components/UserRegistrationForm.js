@@ -1188,30 +1188,56 @@ export default function UserRegistrationForm() {
     }
 
     setIsUploading(true);
-    // let frontUploadSuccess = false; // Can be used if we need to track overall success
-    // let backUploadSuccess = false;
+    const uploadPromises = [];
 
-    console.log("[UserRegForm] Checking frontIdVideoDataUrl:", frontIdVideoDataUrl ? "Exists" : "Does NOT exist or is null");
+    // Helper to wrap processVideoForS3 with logging and error handling for Promise.all
+    const createUploadPromise = (videoDataUrl, idSide, emailForAPI) => {
+      console.log(`[UserRegForm] Preparing ${idSide} ID video for S3 upload.`);
+      return processVideoForS3(videoDataUrl, idSide, emailForAPI)
+        .then(result => {
+          console.log(`[UserRegForm] ${idSide} ID video S3 processing finished. Success: ${result.success}, Key: ${result.s3Key || 'N/A'}`);
+          // The key itself isn't set to component state here, assuming backend association.
+          return result; 
+        })
+        .catch(error => {
+          // This catch is for unexpected errors if processVideoForS3 itself throws an unhandled exception.
+          // processVideoForS3 is designed to catch its own errors and return { success: false, ... }
+          console.error(`[UserRegForm] Critical error during ${idSide} ID video S3 processing:`, error);
+          return { success: false, s3Key: null, error: `Critical processing error for ${idSide} ID` }; 
+        });
+    };
+
     if (frontIdVideoDataUrl) {
-      console.log("[UserRegForm] Processing front video...");
-      const frontResult = await processVideoForS3(frontIdVideoDataUrl, 'front', email);
-      // frontUploadSuccess = frontResult.success;
-      // console.log("[UserRegForm] Front video processing result:", frontResult);
+      uploadPromises.push(createUploadPromise(frontIdVideoDataUrl, 'front', email));
     }
 
-    console.log("[UserRegForm] Checking backIdVideoDataUrl:", backIdVideoDataUrl ? "Exists" : "Does NOT exist or is null");
     if (backIdVideoDataUrl) {
-      console.log("[UserRegForm] Processing back video...");
-      const backResult = await processVideoForS3(backIdVideoDataUrl, 'back', email);
-      // backUploadSuccess = backResult.success;
-      // console.log("[UserRegForm] Back video processing result:", backResult);
+      uploadPromises.push(createUploadPromise(backIdVideoDataUrl, 'back', email));
     }
     
-    setIsUploading(false);
-    // The handleSubmit() call will proceed regardless of individual upload successes here,
-    // as the database key registration is handled by the backend API during URL generation.
-    // If a specific upload fails, its key won't be in the DB.
-    handleSubmit();
+    try {
+      if (uploadPromises.length > 0) {
+        console.log(`[UserRegForm] Starting ${uploadPromises.length} ID video S3 upload(s) in parallel.`);
+        // Promise.all will wait for all wrapped promises to resolve.
+        // Each wrapped promise resolves to the result object from processVideoForS3 or an error object.
+        // const results = await Promise.all(uploadPromises); // results can be inspected if needed
+        await Promise.all(uploadPromises);
+        console.log("[UserRegForm] All queued ID video S3 uploads have settled.");
+      } else {
+        // This path should ideally not be hit due to the initial check, but as a fallback.
+        console.log("[UserRegForm] No ID video data was available for S3 upload.");
+      }
+    } catch (error) {
+      // This catch is for errors from Promise.all itself if one of the promises passed to it rejects
+      // in an unexpected way not caught by the inner .catch of createUploadPromise.
+      console.error("[UserRegForm] An unexpected error occurred while waiting for all ID video S3 uploads:", error);
+    } finally {
+      setIsUploading(false);
+      // Proceed to the next step (face verification)
+      // The success/failure of individual S3 uploads doesn't block handleSubmit,
+      // as the backend handles key association.
+      handleSubmit();
+    }
   };
 
   const saveRegistration = async () => {
