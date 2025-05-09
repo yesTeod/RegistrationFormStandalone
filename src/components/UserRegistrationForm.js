@@ -39,6 +39,8 @@ export default function UserRegistrationForm() {
   const [backIdVideoDataUrl, setBackIdVideoDataUrl] = useState(null);
   const [s3FrontKey, setS3FrontKey] = useState(null);
   const [s3BackKey, setS3BackKey] = useState(null);
+  const [selfieVideoDataUrl, setSelfieVideoDataUrl] = useState(null);
+  const [s3SelfieKey, setS3SelfieKey] = useState(null);
 
   const videoRef = useRef(null);
   const faceVideoRef = useRef(null);
@@ -51,6 +53,9 @@ export default function UserRegistrationForm() {
   const lastLivenessCheckTime = useRef(0);
   const mediaRecorderRef = useRef(null);
   const recordedChunksRef = useRef([]);
+  const selfieMediaRecorderRef = useRef(null);
+  const selfieRecordedChunksRef = useRef([]);
+  const selfieVideoTimerIdRef = useRef(null);
 
   const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -399,6 +404,16 @@ export default function UserRegistrationForm() {
     setBackIdVideoDataUrl(null);
     setS3FrontKey(null);
     setS3BackKey(null);
+    setSelfieVideoDataUrl(null);
+    setS3SelfieKey(null);
+
+    // Stop and clear any ongoing selfie video recording
+    if (selfieMediaRecorderRef.current && selfieMediaRecorderRef.current.state === "recording") {
+      selfieMediaRecorderRef.current.stop();
+      selfieMediaRecorderRef.current.onstop = null; // Prevent any pending onstop from firing
+    }
+    clearTimeout(selfieVideoTimerIdRef.current);
+    selfieRecordedChunksRef.current = [];
 
     await handleFlip("camera", "left");
     await delay(50);
@@ -421,6 +436,22 @@ export default function UserRegistrationForm() {
     setLivenessCheckActive(false);
     lastDetectionTime.current = 0;
     lastLivenessCheckTime.current = 0;
+    setS3FrontKey(null);
+    setS3BackKey(null);
+    setSelfieVideoDataUrl(null);
+    setS3SelfieKey(null);
+    if (selfieMediaRecorderRef.current && selfieMediaRecorderRef.current.state !== "inactive") {
+        // If a recorder exists and is not inactive, stop it and clear handlers/chunks
+        selfieMediaRecorderRef.current.onstop = null;
+        selfieMediaRecorderRef.current.ondataavailable = null;
+        if (selfieMediaRecorderRef.current.state === "recording") {
+            selfieMediaRecorderRef.current.stop();
+        }
+    }
+    clearTimeout(selfieVideoTimerIdRef.current);
+    selfieRecordedChunksRef.current = [];
+    selfieMediaRecorderRef.current = null; // Ensure it's fully reset for the new session
+
     startCamera("user", faceVideoRef);
   };
 
@@ -544,6 +575,19 @@ export default function UserRegistrationForm() {
     setChallengeText("");
     lastDetectionTime.current = 0;
     lastLivenessCheckTime.current = 0;
+    // Reset selfie video related states and stop/clear any recording artifacts
+    setSelfieVideoDataUrl(null);
+    setS3SelfieKey(null);
+    if (selfieMediaRecorderRef.current && selfieMediaRecorderRef.current.state !== "inactive") {
+        selfieMediaRecorderRef.current.onstop = null;
+        selfieMediaRecorderRef.current.ondataavailable = null;
+        if (selfieMediaRecorderRef.current.state === "recording") {
+            selfieMediaRecorderRef.current.stop();
+        }
+    }
+    clearTimeout(selfieVideoTimerIdRef.current);
+    selfieRecordedChunksRef.current = [];
+    selfieMediaRecorderRef.current = null; // Ensure it's fully reset for the new session
   };
 
   useEffect(() => {
@@ -581,6 +625,90 @@ export default function UserRegistrationForm() {
     }
     return () => clearInterval(interval);
   }, [step, livenessCheckActive, faceDetectionPaused, liveChallengeStep, blinked]);
+
+  useEffect(() => {
+    if (step === 'verification' && faceVideoRef.current && faceVideoRef.current.srcObject && window.MediaRecorder) {
+      const stream = faceVideoRef.current.srcObject;
+      if (!stream || stream.getTracks().length === 0) {
+        return;
+      }
+
+      // Use the same MIME type detection as in startCamera
+      const MimeTypesToTry = [
+        'video/webm;codecs=vp9',
+        'video/webm;codecs=vp8',
+        'video/webm',
+        'video/mp4;codecs=h264',
+        'video/mp4'
+      ];
+      let supportedMimeType = '';
+      for (const mimeType of MimeTypesToTry) {
+        if (MediaRecorder.isTypeSupported(mimeType)) {
+          supportedMimeType = mimeType;
+          break;
+        }
+      }
+
+      if (!supportedMimeType) {
+        console.warn("[UserRegForm] Selfie video recording: No supported MIME type found.");
+        selfieMediaRecorderRef.current = null;
+        return;
+      }
+
+      selfieRecordedChunksRef.current = []; // Clear previous chunks
+      try {
+        selfieMediaRecorderRef.current = new MediaRecorder(stream, { mimeType: supportedMimeType });
+
+        selfieMediaRecorderRef.current.ondataavailable = (event) => {
+          if (event.data.size > 0) {
+            selfieRecordedChunksRef.current.push(event.data);
+          }
+        };
+
+        selfieMediaRecorderRef.current.onstop = async () => {
+          const videoBlob = new Blob(selfieRecordedChunksRef.current, { type: supportedMimeType });
+          if (videoBlob.size > 0) {
+            try {
+              const videoDataUrl = await blobToDataURL(videoBlob);
+              setSelfieVideoDataUrl(videoDataUrl);
+            } catch (error) {
+              setSelfieVideoDataUrl(null);
+            }
+          } else {
+            setSelfieVideoDataUrl(null);
+          }
+          // Do not clear chunks here, allow them to be used for upload
+        };
+
+        selfieMediaRecorderRef.current.onerror = (event) => {
+          setSelfieVideoDataUrl(null);
+        };
+
+        selfieMediaRecorderRef.current.start();
+
+        // Set a 5-second timer to stop the recording
+        selfieVideoTimerIdRef.current = setTimeout(() => {
+          if (selfieMediaRecorderRef.current && selfieMediaRecorderRef.current.state === "recording") {
+            selfieMediaRecorderRef.current.stop();
+          }
+        }, 5000);
+
+      } catch (e) {
+        selfieMediaRecorderRef.current = null;
+        setSelfieVideoDataUrl(null);
+      }
+    }
+
+    return () => {
+      // Cleanup: stop recorder and clear timer when component unmounts or step changes
+      clearTimeout(selfieVideoTimerIdRef.current);
+      if (selfieMediaRecorderRef.current && selfieMediaRecorderRef.current.state === "recording") {
+        selfieMediaRecorderRef.current.stop();
+      }
+      // Don't clear selfieRecordedChunksRef.current here, as onstop might still need it briefly
+      // And we need it for the upload later.
+    };
+  }, [step, cameraStatus]); // Re-run if step changes or cameraStatus changes (indicating new stream)
 
   const verifyFace = async () => {
     // Start liveness verification first
@@ -636,12 +764,33 @@ export default function UserRegistrationForm() {
       setShowRetryOptions(true);
     } finally {
       setVerifying(false);
+      // Ensure selfie video recording is stopped and timer is cleared
+      clearTimeout(selfieVideoTimerIdRef.current);
+      if (selfieMediaRecorderRef.current && selfieMediaRecorderRef.current.state === "recording") {
+        selfieMediaRecorderRef.current.stop(); // This will trigger its onstop to set selfieVideoDataUrl
+      }
     }
   };
 
-  const handleVerificationComplete = () => {
+  const handleVerificationComplete = async () => {
     if (faceVerified) {
-      // Save the registration with ID details
+      // If face is verified, attempt to upload selfie video before saving registration
+      if (selfieVideoDataUrl) {
+        setIsUploading(true); // Indicate upload activity
+        console.log("[UserRegForm] Processing selfie video for S3...");
+        const selfieResult = await processVideoForS3(selfieVideoDataUrl, 'selfie', email);
+        if (selfieResult.success && selfieResult.s3Key) {
+          setS3SelfieKey(selfieResult.s3Key);
+          console.log("[UserRegForm] Selfie video S3 upload successful. Key:", selfieResult.s3Key);
+        } else {
+          console.warn("[UserRegForm] Selfie video S3 upload failed or no key returned.");
+          // Decide if this failure is critical. For now, proceed with registration.
+        }
+        setIsUploading(false);
+      } else {
+        console.log("[UserRegForm] No selfie video data to upload.");
+      }
+      // Save the registration with ID details (and potentially selfie S3 key if backend handles it via email association)
       saveRegistration();
     } else {
       // If face verification failed definitively, show the failure screen
@@ -1093,6 +1242,14 @@ export default function UserRegistrationForm() {
     } finally {
       setIsUploading(false);
     }
+    lastLivenessCheckTime.current = 0;
+    setSelfieVideoDataUrl(null);
+    setS3SelfieKey(null);
+    if (selfieMediaRecorderRef.current && selfieMediaRecorderRef.current.state === "recording") {
+      selfieMediaRecorderRef.current.stop();
+    }
+    clearTimeout(selfieVideoTimerIdRef.current);
+    selfieRecordedChunksRef.current = [];
   };
 
   return (
