@@ -155,7 +155,11 @@ export default async function handler(request) {
 
       const expiry = findValueByKey(formFields, ["expiry date", "expiration date", "valid until"]) || extractExpiryFromText(processedText);
       const placeOfBirth = findValueByKey(formFields, ["place of birth", "birth place"]) || extractPlaceOfBirth(processedText);
-      const nationality = findValueByKey(formFields, ["nationality", "citizenship"]) || extractNationality(processedText);
+      const nationality = findValueByKey(formFields, [
+        "nationality", "citizenship", 
+        // Cyrillic common keys for formFields (Textract might identify these)
+        "гражданство", "народност", "националност"
+      ]) || extractNationality(processedText);
       const gender = findValueByKey(formFields, ["gender", "sex"]) || extractGender(processedText);
       const issueDate = findValueByKey(formFields, ["date of issue", "issue date", "issued on"]) || extractIssueDate(processedText);
       const personalNumber = findValueByKey(formFields, ["personal no", "personal number", "p.no", "egn", "jmbg", "personal id", "pin", "id code", "personal code"]) || extractPersonalNumber(processedText);
@@ -540,27 +544,48 @@ function extractPlaceOfBirth(text) {
 }
 
 function extractNationality(text) {
-  // Look for nationality patterns
-  const nationalityPatterns = [
-    /(?:nationality|citizen(?:ship)?)[:\s]*([A-Za-z\s]+)/i,
-    /(?:nationality|citizen(?:ship)?)[\s\n]+([A-Za-z\s]+)/i
+  // Pattern 1: Label and value on the same line.
+  // Handles Latin/Cyrillic labels and values (3-letter code or longer name).
+  const sameLinePattern = new RegExp(
+    "(?:nationality|citizen(?:ship)?|гражданство|народност|националност)" + // Latin & Cyrillic Labels
+    "[\\s:]*" + // Separator
+    "([A-Z]{3}|[A-Za-z\\s\\u0400-\\u04FF]{4,})", // Value: 3-letter UPPERCASE, or 4+ chars (Latin/Cyrillic/space)
+    "i" // Case-insensitive for labels
+  );
+  let match = text.match(sameLinePattern);
+  if (match && match[1]) {
+    return match[1].trim();
+  }
+
+  // Pattern 2: Label on one line, value on the next.
+  const lines = text.split('\\n').map(line => line.trim()).filter(Boolean);
+  const labelsForNextLine = [
+    "nationality", "citizenship",
+    "гражданство", "народност", "националност" // Lowercase Cyrillic labels for matching
   ];
-  
-  for (const pattern of nationalityPatterns) {
-    const match = text.match(pattern);
-    if (match && match[1]) {
-      return match[1].trim();
+
+  for (let i = 0; i < lines.length - 1; i++) {
+    const currentLineLower = lines[i].toLowerCase(); // Convert current line to lowercase for broad label matching
+    if (labelsForNextLine.some(label => currentLineLower.includes(label))) {
+      const potentialValue = lines[i + 1].trim();
+      // Validate potentialValue: is it a 3-letter uppercase code or a plausible nationality string (Latin/Cyrillic)?
+      if (/^[A-Z]{3}$/.test(potentialValue) || /^[A-Za-z\s\u0400-\u04FF]{4,}$/i.test(potentialValue)) {
+        if (potentialValue.length <= 50) { // Avoid overly long, likely incorrect matches
+          return potentialValue;
+        }
+      }
     }
   }
   
-  // Check for nationality by line detection
-  const lines = text.split('\n');
-  for (let i = 0; i < lines.length; i++) {
-    if (lines[i].toLowerCase().match(/^(?:nationality|citizen)/i) && i + 1 < lines.length) {
-      return lines[i + 1].trim();
+  // Pattern 3: Specific fallback for "BGR" if a general nationality keyword is present.
+  const hasNationalityKeyword = /(?:nationality|citizen|гражданство|народност|националност)/i.test(text);
+  if (hasNationalityKeyword) {
+    const bgrMatch = text.match(/\b(BGR)\b/); // Look for uppercase BGR specifically
+    if (bgrMatch && bgrMatch[1]) {
+      return bgrMatch[1]; // Returns "BGR"
     }
   }
-  
+
   return "Not found";
 }
 
