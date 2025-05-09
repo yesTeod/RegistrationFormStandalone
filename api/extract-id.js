@@ -126,7 +126,7 @@ export default async function handler(request) {
       } else if (givenName !== "Not found") {
         finalFullName = givenName;
       } else if (surname !== "Not found") {
-        finalFullName = surname;
+        finalFullName = surname; // Fallback to surname if only surname is found for fullName
       }
       
       const nameDetails = {
@@ -135,7 +135,24 @@ export default async function handler(request) {
       };
       
       const dateOfBirth = findValueByKey(formFields, ["date of birth", "dob", "birth date"]) || extractDateOfBirth(processedText);
-      const idNumber = findValueByKey(formFields, ["id number", "document number", "card number", "id"]) || extractIdNumberFromText(processedText);
+      
+      // Initial extraction of idNumber
+      let idNumberValue = findValueByKey(formFields, ["id number", "document number", "card number", "id"]) || extractIdNumberFromText(processedText);
+
+      // Safeguard against "surname" or "name" being picked as idNumber
+      if (idNumberValue && typeof idNumberValue === 'string') {
+        const idLower = idNumberValue.toLowerCase();
+        if (idLower === "surname" || idLower === "name") {
+          const idFromTextAttempt = extractIdNumberFromText(processedText); // Re-attempt with improved extractIdNumberFromText
+          if (idFromTextAttempt && idFromTextAttempt.toLowerCase() !== "surname" && idFromTextAttempt.toLowerCase() !== "name" && idFromTextAttempt !== "Not found") {
+            idNumberValue = idFromTextAttempt;
+          } else {
+            idNumberValue = "Not found"; // Default to "Not found" if still problematic
+          }
+        }
+      }
+      idNumberValue = (idNumberValue && idNumberValue.trim() !== "") ? idNumberValue.trim() : "Not found";
+
       const expiry = findValueByKey(formFields, ["expiry date", "expiration date", "valid until"]) || extractExpiryFromText(processedText);
       const placeOfBirth = findValueByKey(formFields, ["place of birth", "birth place"]) || extractPlaceOfBirth(processedText);
       const nationality = findValueByKey(formFields, ["nationality", "citizenship"]) || extractNationality(processedText);
@@ -145,7 +162,7 @@ export default async function handler(request) {
       const idDetails = {
         fullName: nameDetails.fullName,
         fatherName: nameDetails.fatherName,
-        idNumber,
+        idNumber: idNumberValue,
         expiry,
         dateOfBirth,
         placeOfBirth,
@@ -168,7 +185,7 @@ export default async function handler(request) {
           error: "No text detected in image", 
           fullName: "Not found", 
           fatherName: "Not found",
-          idNumber: "Not found", 
+          idNumber: "Not found", // Ensure this is consistent
           expiry: "Not found",
           dateOfBirth: "Not found",
           placeOfBirth: "Not found",
@@ -186,7 +203,7 @@ export default async function handler(request) {
         error: error.message || "Processing error", 
         fullName: "Not found", 
         fatherName: "Not found",
-        idNumber: "Not found", 
+        idNumber: "Not found", // Ensure this is consistent
         expiry: "Not found",
         dateOfBirth: "Not found",
         placeOfBirth: "Not found",
@@ -374,27 +391,49 @@ function extractIdNumberFromText(text) {
   const docPatterns = [
     /doc(?:ument)?\s*(?:no|number|#)?[:\s]*([A-Z0-9\-\/]+)/i,
     /card\s*(?:no|number|#)?[:\s]*([A-Z0-9\-\/]+)/i,
-    /no[:\s]*([A-Z0-9\-\/]{6,})/i,
-    /id[:\s]*([A-Z0-9\-\/]{6,})/i
+    /no[:\s]*([A-Z0-9\-\/]{6,})/i, // Ensure "no" is followed by a typical ID-like string
+    /id[:\s]*([A-Z0-9\-\/]{6,})/i  // Ensure "id" is followed by a typical ID-like string
   ];
   
   for (const pattern of docPatterns) {
     const match = text.match(pattern);
     if (match && match[1]) {
-      return match[1].trim();
+      // Additional check to prevent matching common words like "SURNAME" if captured
+      if (!/^(?:SURNAME|NAME)$/i.test(match[1].trim())) {
+        return match[1].trim();
+      }
     }
   }
   
   // Alternative: look for sequences of digits and letters that could be document numbers
-  const numberPattern = /\b[A-Z0-9\-\/]{6,}\b/g;
+  const numberPattern = /\b[A-Z0-9\-\/]{6,}\b/g; // At least 6 characters long
   const matches = text.match(numberPattern);
   if (matches) {
-    // Filter out dates and other common number patterns
-    const validMatches = matches.filter(match => 
-      !/^\d{1,2}[\/-]\d{1,2}[\/-]\d{2,4}$/.test(match) && // not a date
-      !/^\d+$/.test(match) // not just a sequence of numbers
-    );
+    // Filter out dates and other common number patterns, and specific excluded words
+    const purelyAlphaExclusions = /^(?:SURNAME|NAME)$/i; // Words to exclude if purely alphabetical
+
+    const validMatches = matches.filter(match => {
+      if (/^\d{1,2}[\/-]\d{1,2}[\/-]\d{2,4}$/.test(match)) return false; // filter out dates DD/MM/YYYY etc.
+      
+      // If the match is purely alphabetical (case-insensitive), check against exclusions.
+      // Allows hyphens within the string but the test is on the word itself.
+      if (/^[A-Z]+$/i.test(match) && purelyAlphaExclusions.test(match)) {
+        return false;
+      }
+      // Example: "123456" is fine. "ABCDEF" is fine unless it's "SURNAME" or "NAME". "ABC-DEF" is fine. "123-456" is fine.
+      return true; 
+    });
+
     if (validMatches.length > 0) {
+      // Prefer matches with digits, or mixed alpha-numeric, or longer ones.
+      // Simple sort: prioritize those with digits, then by length.
+      validMatches.sort((a, b) => {
+        const aHasDigit = /\d/.test(a);
+        const bHasDigit = /\d/.test(b);
+        if (aHasDigit && !bHasDigit) return -1;
+        if (!aHasDigit && bHasDigit) return 1;
+        return b.length - a.length; // Longer one first if digit presence is same
+      });
       return validMatches[0];
     }
   }
@@ -548,7 +587,9 @@ function extractIssueDate(text) {
   // Look for issue date patterns
   const issueDatePatterns = [
     /(?:date of issue|issued on|issued|issue date)[:\s]*([\d\/\.\-]+)/i,
-    /(?:date of issue|issued on|issued|issue date)[\s\n]+([\d\/\.\-]+)/i
+    /(?:date of issue|issued on|issued|issue date)[\s\n]+([\d\/\.\-]+)/i,
+    /(?:valid from)[:\s]*([\d\/\.\-]+)/i, // Added "valid from"
+    /(?:valid from)[\s\n]+([\d\/\.\-]+)/i
   ];
   
   for (const pattern of issueDatePatterns) {
@@ -558,38 +599,35 @@ function extractIssueDate(text) {
     }
   }
   
-  // Check for dates near "issue" word
+  // Check for dates near "issue" word (but not "expiry" related words)
   const lines = text.split('\n');
   for (let i = 0; i < lines.length; i++) {
-    if (lines[i].toLowerCase().includes('issue') && !lines[i].toLowerCase().includes('expir')) {
-      // Check current line for dates
+    const lowerLine = lines[i].toLowerCase();
+    if (lowerLine.includes('issue') && !lowerLine.includes('expir') && !lowerLine.includes('authority')) {
       const dateMatch = lines[i].match(/\d{1,2}[\/-]\d{1,2}[\/-]\d{2,4}/);
-      if (dateMatch) {
-        return dateMatch[0];
-      }
-      
-      // Check next line for dates
+      if (dateMatch) return dateMatch[0];
       if (i + 1 < lines.length) {
         const nextLineDateMatch = lines[i + 1].match(/\d{1,2}[\/-]\d{1,2}[\/-]\d{2,4}/);
-        if (nextLineDateMatch) {
-          return nextLineDateMatch[0];
-        }
+        if (nextLineDateMatch) return nextLineDateMatch[0];
       }
     }
   }
   
-  // If we have multiple dates and already found expiry and DOB,
-  // another date might be the issue date
-  const expiryDate = extractExpiryFromText(text);
-  const dobDate = extractDateOfBirth(text);
-  const datePatterns = text.match(/\d{1,2}[\/-]\d{1,2}[\/-]\d{2,4}/g);
+  // Fallback: Try to find a date that isn't DOB or Expiry
+  // These calls ensure we are comparing against what other functions would identify as DOB/Expiry.
+  const dobDate = extractDateOfBirth(text); 
+  const expiryDate = extractExpiryFromText(text); 
   
-  if (datePatterns && datePatterns.length > 2) {
-    // Find a date that's not expiry or DOB
-    for (const date of datePatterns) {
-      if (date !== expiryDate && date !== dobDate) {
-        return date;
-      }
+  const allDateMatches = text.match(/\b\d{1,2}[\/-]\d{1,2}[\/-]\d{2,4}\b/g);
+  if (allDateMatches && allDateMatches.length > 0) {
+    const uniqueDates = [...new Set(allDateMatches)];
+    const potentialIssueDates = uniqueDates.filter(d => d !== dobDate && d !== expiryDate);
+
+    if (potentialIssueDates.length > 0) {
+      // If multiple candidates, for now, we take the first one.
+      // A more sophisticated approach might consider date order (DOB < Issue < Expiry)
+      // or proximity to keywords if parsing fails for direct labels.
+      return potentialIssueDates[0]; 
     }
   }
   
