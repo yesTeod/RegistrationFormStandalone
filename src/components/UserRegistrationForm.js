@@ -1284,30 +1284,6 @@ export default function UserRegistrationForm() {
       className={`p-6 ${step === "adminDashboard" ? "max-w-[75%]" : "max-w-md"} mx-auto bg-gradient-to-br from-gray-100 to-gray-300 rounded-3xl shadow-xl transition-transform duration-300 relative border border-gray-300 will-change-transform`}
     >
       <style>{`button { border-radius: 10px !important; }`}</style>
-      
-      {/* On-screen debug log window */}
-      <div style={{
-        position: 'fixed',
-        top: '10px',
-        left: '10px',
-        width: '300px',
-        height: '200px',
-        backgroundColor: 'rgba(0,0,0,0.7)',
-        color: 'white',
-        padding: '5px',
-        overflowY: 'scroll',
-        fontSize: '10px',
-        zIndex: 9999,
-        borderRadius: '5px',
-        border: '1px solid #ccc'
-      }}>
-        <h4 style={{ margin: '0 0 5px 0', borderBottom: '1px solid #555', paddingBottom: '3px' }}>Event Log</h4>
-        {debugLogs.map((log, index) => (
-          <div key={index} style={{ marginBottom: '3px', wordBreak: 'break-all', color: log.type === 'error' ? 'red' : log.type === 'warn' ? 'yellow' : 'white' }}>
-            <strong>[{log.timestamp}]</strong> ({log.type}): {log.message}
-          </div>
-        ))}
-      </div>
 
       {step === "form" && (
         <div className="space-y-4">
