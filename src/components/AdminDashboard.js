@@ -229,9 +229,15 @@ export default function AdminDashboard() {
                       <td colSpan="7" className="p-4">
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 bg-white rounded shadow">
                           <div>
-                            <h4 className="font-semibold text-gray-700 mb-1">Name:</h4>
-                            <p className="text-gray-600">{user.idDetails?.name || 'N/A'}</p>
+                            <h4 className="font-semibold text-gray-700 mb-1">Full Name:</h4>
+                            <p className="text-gray-600">{user.idDetails?.fullName || 'N/A'}</p>
                           </div>
+                          {user.idDetails?.fatherName && user.idDetails?.fatherName !== 'Not found' && user.idDetails?.fatherName !== 'N/A' && (
+                            <div>
+                              <h4 className="font-semibold text-gray-700 mb-1">Father's Name:</h4>
+                              <p className="text-gray-600">{user.idDetails.fatherName}</p>
+                            </div>
+                          )}
                           <div>
                             <h4 className="font-semibold text-gray-700 mb-1">ID Number:</h4>
                             <p className="text-gray-600">{user.idDetails?.idNumber || 'N/A'}</p>
