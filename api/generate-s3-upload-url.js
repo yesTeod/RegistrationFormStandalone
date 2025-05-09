@@ -62,8 +62,8 @@ export default async function handler(req, res) {
     if (!fileType || !email || !idSide) {
       return res.status(400).json({ success: false, error: "fileType, email, and idSide are required" });
     }
-    if (idSide !== 'front' && idSide !== 'back') {
-      return res.status(400).json({ success: false, error: "idSide must be 'front' or 'back'" });
+    if (idSide !== 'front' && idSide !== 'back' && idSide !== 'selfie' && idSide !== 'face_liveness_check') {
+      return res.status(400).json({ success: false, error: "idSide must be 'front', 'back', 'selfie', or 'face_liveness_check'" });
     }
 
     const fileExtension = fileType.split('/')[1] || 'bin'; 
@@ -77,8 +77,12 @@ export default async function handler(req, res) {
       const updateQuery = { $set: { updatedAt: new Date() } };
       if (idSide === 'front') {
         updateQuery.$set.frontIdVideoS3Key = uniqueFileName;
-      } else { // idSide === 'back'
+      } else if (idSide === 'back') { 
         updateQuery.$set.backIdVideoS3Key = uniqueFileName;
+      } else if (idSide === 'selfie') { 
+        updateQuery.$set.selfieVideoS3Key = uniqueFileName;
+      } else { // idSide === 'face_liveness_check'
+        updateQuery.$set.faceLivenessVideoS3Key = uniqueFileName;
       }
 
       const result = await collection.updateOne(
