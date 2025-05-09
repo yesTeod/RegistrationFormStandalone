@@ -79,12 +79,59 @@ export default async function handler(request) {
       const formFields = extractFormFields(textractResponse.Blocks);
       console.log("Extracted Form Fields:", formFields);
       
-      // Extract key-value pairs directly for ID fields
-      const extractedNameDetailsFromText = extractNameFromText(processedText);
+      // Extract key-value pairs for name parts
+      const extractedNameDetailsFromText = extractNameFromText(processedText); // returns { givenName, surname, fatherName }
 
+      // --- Determine Given Name, Surname, and Father's Name ---
+      // Prioritize specific fields from Textract FORMS
+      let givenName = findValueByKey(formFields, ["given name", "first name"]);
+      let surname = findValueByKey(formFields, ["surname", "last name", "family name"]);
+      let fatherName = findValueByKey(formFields, ["father's name"]);
+
+      // If a general "name" field from forms is present and specific "given name" is not,
+      // use the general "name" field. Also, if this general "name" seems to include the surname,
+      // try to extract just the given name part.
+      const generalNameFromForms = findValueByKey(formFields, ["name"]);
+      if (!givenName && generalNameFromForms) {
+        givenName = generalNameFromForms;
+      }
+
+      // If both generalNameFromForms (used as givenName) and a separate surname are found,
+      // and givenName appears to be a full name containing the surname, refine givenName.
+      if (givenName && surname && givenName !== "Not found" && surname !== "Not found") {
+        const gnLower = givenName.toLowerCase();
+        const snLower = surname.toLowerCase();
+        // Check if givenName ends with surname (and is longer)
+        if (gnLower.endsWith(snLower) && gnLower.length > snLower.length) {
+          // Check if there's a space before the surname part in givenName
+          if (gnLower.charAt(gnLower.length - snLower.length - 1) === ' ') {
+            givenName = givenName.substring(0, gnLower.length - snLower.length - 1).trim();
+          }
+        }
+      }
+      
+      // Fallback to text extraction results if form fields didn't provide the values
+      givenName = givenName || extractedNameDetailsFromText.givenName;
+      surname = surname || extractedNameDetailsFromText.surname;
+      fatherName = fatherName || extractedNameDetailsFromText.fatherName;
+
+      // Ensure "Not found" for empty or null results, and trim
+      givenName = (givenName && givenName.trim() !== "") ? givenName.trim() : "Not found";
+      surname = (surname && surname.trim() !== "") ? surname.trim() : "Not found";
+      fatherName = (fatherName && fatherName.trim() !== "") ? fatherName.trim() : "Not found";
+
+      let finalFullName = "Not found";
+      if (givenName !== "Not found" && surname !== "Not found") {
+        finalFullName = `${givenName} ${surname}`;
+      } else if (givenName !== "Not found") {
+        finalFullName = givenName;
+      } else if (surname !== "Not found") {
+        finalFullName = surname;
+      }
+      
       const nameDetails = {
-        name: findValueByKey(formFields, ["name", "given name", "first name"]) || extractedNameDetailsFromText.name,
-        fatherName: findValueByKey(formFields, ["father's name", "surname", "last name", "family name"]) || extractedNameDetailsFromText.fatherName || "Not found"
+        fullName: finalFullName,
+        fatherName: fatherName
       };
       
       const dateOfBirth = findValueByKey(formFields, ["date of birth", "dob", "birth date"]) || extractDateOfBirth(processedText);
@@ -93,12 +140,10 @@ export default async function handler(request) {
       const placeOfBirth = findValueByKey(formFields, ["place of birth", "birth place"]) || extractPlaceOfBirth(processedText);
       const nationality = findValueByKey(formFields, ["nationality", "citizenship"]) || extractNationality(processedText);
       const gender = findValueByKey(formFields, ["gender", "sex"]) || extractGender(processedText);
-      const address = findValueByKey(formFields, ["address", "residence"]) || extractAddress(processedText);
-      const issuingAuthority = findValueByKey(formFields, ["issuing authority", "issued by", "authority"]) || extractIssuingAuthority(processedText);
       const issueDate = findValueByKey(formFields, ["date of issue", "issue date", "issued on"]) || extractIssueDate(processedText);
       
       const idDetails = {
-        name: nameDetails.name,
+        fullName: nameDetails.fullName,
         fatherName: nameDetails.fatherName,
         idNumber,
         expiry,
@@ -121,7 +166,7 @@ export default async function handler(request) {
       return new Response(
         JSON.stringify({ 
           error: "No text detected in image", 
-          name: "Not found", 
+          fullName: "Not found", 
           fatherName: "Not found",
           idNumber: "Not found", 
           expiry: "Not found",
@@ -139,7 +184,7 @@ export default async function handler(request) {
     return new Response(
       JSON.stringify({ 
         error: error.message || "Processing error", 
-        name: "Not found", 
+        fullName: "Not found", 
         fatherName: "Not found",
         idNumber: "Not found", 
         expiry: "Not found",
@@ -250,64 +295,79 @@ function extractNameFromText(text) {
   
   // Initialize our result with default values
   const data = {
-    name: "Not found",
+    givenName: "Not found", // "name" part of "name + surname"
+    surname: "Not found",
     fatherName: "Not found"
   };
 
-  // --- First, check for English labels ---
-  // The idea is to look for the line that exactly equals the label (case insensitive),
-  // then treat the immediately following line as the field value.
+  // --- Label-based extraction (value on the next line) ---
   for (let i = 0; i < lines.length; i++) {
     const lowerLine = lines[i].toLowerCase();
-    if (lowerLine === "name" && i + 1 < lines.length) {
-      data.name = lines[i + 1];
+    if ((lowerLine === "name" || lowerLine === "given name" || lowerLine === "first name") && i + 1 < lines.length && data.givenName === "Not found") {
+      data.givenName = lines[i + 1];
     }
-    if (lowerLine === "father's name" && i + 1 < lines.length) {
+    if ((lowerLine === "surname" || lowerLine === "last name" || lowerLine === "family name") && i + 1 < lines.length && data.surname === "Not found") {
+      data.surname = lines[i + 1];
+    }
+    if (lowerLine === "father's name" && i + 1 < lines.length && data.fatherName === "Not found") {
       data.fatherName = lines[i + 1];
     }
   }
 
-  // --- If the English labels weren't found, try to use Bulgarian labels ---
-  // For the given name, Bulgarian may use "Име" (or even OCR mis-read as "ViMe")
-  // For the father's name, Bulgarian may have "Презиме"
-  // This logic is ineffective if englishOnly=true, as Cyrillic chars would be removed.
-  // Keeping it commented out for now, but can be removed if englishOnly is always true.
-  /*
-  if (data.name === "Not found") {
-    for (let i = 0; i < lines.length; i++) {
-      const lowerLine = lines[i].toLowerCase();
-      if ((lowerLine === "име" || lowerLine === "vime") && i + 1 < lines.length) {
-        data.name = lines[i + 1];
-      }
-    }
-  }
-  
-  if (data.fatherName === "Not found") {
-    for (let i = 0; i < lines.length; i++) {
-      if (lines[i].toLowerCase() === "презиме" && i + 1 < lines.length) {
-        data.fatherName = lines[i + 1];
-      }
-    }
-  }
-  */
+  // --- Pattern-based extraction (label and value on the same line) ---
+  let match;
 
-  // Check for patterns like "Name: John Doe" on the same line
-  const namePattern = /name[\s:]+(.*)/i;
-  const nameMatch = text.match(namePattern);
-  if (data.name === "Not found" && nameMatch && nameMatch[1]) {
-    data.name = nameMatch[1].trim();
+  // Specific given name patterns
+  const givenNamePatternSpecific = /(?:given name|first name)[\s:]+(.+)/i;
+  match = text.match(givenNamePatternSpecific);
+  if (data.givenName === "Not found" && match && match[1]) {
+    data.givenName = match[1].trim();
+  }
+
+  // Surname patterns
+  const surnamePattern = /(?:surname|last name|family name)[\s:]+(.+)/i;
+  match = text.match(surnamePattern);
+  if (data.surname === "Not found" && match && match[1]) {
+    data.surname = match[1].trim();
   }
   
-  // Check for "surname" field
-  const surnamePattern = /surname[\s:]+(.*)/i;
-  const surnameMatch = text.match(surnamePattern);
-  if (data.fatherName === "Not found" && surnameMatch && surnameMatch[1]) {
-    data.fatherName = surnameMatch[1].trim();
+  // Generic "Name: Value" pattern for givenName, if still not found
+  // This tries to be smart if a surname is also found
+  if (data.givenName === "Not found") {
+    const namePatternGeneric = /^\s*name\s*[:\s]+\s*(.+)/im;
+    match = text.match(namePatternGeneric);
+    if (match && match[1]) {
+      let potentialGivenName = match[1].trim();
+      // If this generic name potentially includes a surname that we've also separately found.
+      // e.g., Text is "Name: John Doe" and "Surname: Doe". We want givenName = "John".
+      if (data.surname !== "Not found" && data.surname !== "") {
+        const pgLower = potentialGivenName.toLowerCase();
+        const sLower = data.surname.toLowerCase();
+        if (pgLower.endsWith(sLower) && pgLower.length > sLower.length) {
+          // Check for a space separating the potential given name from the surname part
+          if (pgLower.charAt(pgLower.length - sLower.length - 1) === ' ') {
+            potentialGivenName = potentialGivenName.substring(0, pgLower.length - sLower.length - 1).trim();
+          }
+        }
+      }
+      data.givenName = potentialGivenName;
+    }
   }
+
+  // Father's name pattern
+  const fatherNamePattern = /father's name[\s:]+(.+)/i;
+  match = text.match(fatherNamePattern);
+  if (data.fatherName === "Not found" && match && match[1]) {
+    data.fatherName = match[1].trim();
+  }
+  
+  // Ensure "Not found" if values are empty strings
+  data.givenName = data.givenName && data.givenName.trim() !== "" ? data.givenName.trim() : "Not found";
+  data.surname = data.surname && data.surname.trim() !== "" ? data.surname.trim() : "Not found";
+  data.fatherName = data.fatherName && data.fatherName.trim() !== "" ? data.fatherName.trim() : "Not found";
   
   return data;
 }
-
 
 function extractIdNumberFromText(text) {
   // Look for document number patterns
@@ -479,66 +539,6 @@ function extractGender(text) {
   const simpleGenderMatch = text.match(/[^A-Za-z]([MF])[^A-Za-z]/i);
   if (simpleGenderMatch && simpleGenderMatch[1]) {
     return simpleGenderMatch[1].toUpperCase();
-  }
-  
-  return "Not found";
-}
-
-function extractAddress(text) {
-  // Look for address patterns
-  const addressPatterns = [
-    /(?:address|residence)[:\s]*([^\n]+)/i,
-    /(?:address|residence)[\s\n]+([^\n]+)/i
-  ];
-  
-  for (const pattern of addressPatterns) {
-    const match = text.match(pattern);
-    if (match && match[1]) {
-      return match[1].trim();
-    }
-  }
-  
-  // Check for address by line detection
-  const lines = text.split('\n');
-  for (let i = 0; i < lines.length; i++) {
-    if (lines[i].toLowerCase().match(/^(?:address|residence)/i) && i + 1 < lines.length) {
-      // Address might span multiple lines
-      let address = lines[i + 1].trim();
-      // Check if next line might be part of address (no known label and not a date)
-      if (i + 2 < lines.length && 
-          !lines[i + 2].match(/^[A-Za-z]+[\s:]/i) && 
-          !lines[i + 2].match(/\d{1,2}[\/-]\d{1,2}[\/-]\d{2,4}/)) {
-        address += ", " + lines[i + 2].trim();
-      }
-      return address;
-    }
-  }
-  
-  return "Not found";
-}
-
-function extractIssuingAuthority(text) {
-  // Look for issuing authority patterns
-  const authorityPatterns = [
-    /(?:issuing authority|issued by|authority|issuer)[:\s]*([^\n]+)/i,
-    /(?:issuing authority|issued by|authority|issuer)[\s\n]+([^\n]+)/i
-  ];
-  
-  for (const pattern of authorityPatterns) {
-    const match = text.match(pattern);
-    if (match && match[1]) {
-      return match[1].trim();
-    }
-  }
-  
-  // Check by line detection
-  const lines = text.split('\n');
-  for (let i = 0; i < lines.length; i++) {
-    if (lines[i].toLowerCase().match(/(?:issuing|issued|authority)/i) && 
-        !lines[i].match(/date/i) && 
-        i + 1 < lines.length) {
-      return lines[i + 1].trim();
-    }
   }
   
   return "Not found";
