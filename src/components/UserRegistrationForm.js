@@ -776,47 +776,21 @@ export default function UserRegistrationForm() {
     if (faceVerified) {
       // If face is verified, attempt to upload selfie video before saving registration
       if (selfieVideoDataUrl) {
-        setIsUploading(true); // Indicate upload activity for selfie processing and key saving
+        setIsUploading(true); // Indicate upload activity
         console.log("[UserRegForm] Processing selfie video for S3...");
         const selfieResult = await processVideoForS3(selfieVideoDataUrl, 'selfie', email);
-        let currentSelfieS3Key = null;
         if (selfieResult.success && selfieResult.s3Key) {
-          setS3SelfieKey(selfieResult.s3Key); // Update state
-          currentSelfieS3Key = selfieResult.s3Key; // Use for immediate API call
-          console.log("[UserRegForm] Selfie video S3 key obtained:", currentSelfieS3Key);
-
-          // Call the new endpoint to save the selfie S3 key
-          console.log("[UserRegForm] Attempting to save selfie video S3 key to DB:", { selfieS3Key: currentSelfieS3Key });
-          try {
-            const saveSelfieKeyResponse = await fetch('/api/save-selfie-video-key', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                email,
-                selfieS3Key: currentSelfieS3Key
-              })
-            });
-            const saveSelfieKeyData = await saveSelfieKeyResponse.json();
-            if (!saveSelfieKeyResponse.ok || !saveSelfieKeyData.success) {
-              console.warn("[UserRegForm] Failed to save selfie video S3 key. Response:", saveSelfieKeyData);
-            } else {
-              console.log("[UserRegForm] Selfie video S3 key API call successful.", saveSelfieKeyData);
-            }
-          } catch (error) {
-            console.error("[UserRegForm] Error calling /api/save-selfie-video-key:", error);
-          }
+          setS3SelfieKey(selfieResult.s3Key);
+          console.log("[UserRegForm] Selfie video S3 upload successful. Key:", selfieResult.s3Key);
         } else {
           console.warn("[UserRegForm] Selfie video S3 upload failed or no key returned.");
-          // If selfie upload fails, we might still want to save a null key, or handle as an error.
-          // For now, if no key, we won't call the save-selfie-video-key endpoint for it.
+          // Decide if this failure is critical. For now, proceed with registration.
         }
-        // setIsUploading(false) will be handled before calling saveRegistration or if an error occurs before then.
+        setIsUploading(false);
       } else {
-        console.log("[UserRegForm] No selfie video data to process or upload.");
+        console.log("[UserRegForm] No selfie video data to upload.");
       }
-      
-      // Finished with video key saving, now proceed to save registration details
-      setIsUploading(false); // Ensure loading state is off before final save registration call
+      // Save the registration with ID details (and potentially selfie S3 key if backend handles it via email association)
       saveRegistration();
     } else {
       // If face verification failed definitively, show the failure screen
@@ -1182,81 +1156,42 @@ export default function UserRegistrationForm() {
     }
 
     setIsUploading(true);
-    let currentS3FrontKey = null;
-    let currentS3BackKey = null;
+    // let frontUploadSuccess = false; // Can be used if we need to track overall success
+    // let backUploadSuccess = false;
 
     console.log("[UserRegForm] Checking frontIdVideoDataUrl:", frontIdVideoDataUrl ? "Exists" : "Does NOT exist or is null");
     if (frontIdVideoDataUrl) {
       console.log("[UserRegForm] Processing front video...");
       const frontResult = await processVideoForS3(frontIdVideoDataUrl, 'front', email);
-      if (frontResult.success && frontResult.s3Key) {
-        setS3FrontKey(frontResult.s3Key); // Update state for other component parts
-        currentS3FrontKey = frontResult.s3Key; // Use this for immediate API call
-        console.log("[UserRegForm] Front ID video S3 key obtained:", currentS3FrontKey);
-      } else {
-        console.warn("[UserRegForm] Front ID video S3 upload failed or no key returned.");
-      }
+      // frontUploadSuccess = frontResult.success;
+      // console.log("[UserRegForm] Front video processing result:", frontResult);
     }
 
     console.log("[UserRegForm] Checking backIdVideoDataUrl:", backIdVideoDataUrl ? "Exists" : "Does NOT exist or is null");
     if (backIdVideoDataUrl) {
       console.log("[UserRegForm] Processing back video...");
       const backResult = await processVideoForS3(backIdVideoDataUrl, 'back', email);
-      if (backResult.success && backResult.s3Key) {
-        setS3BackKey(backResult.s3Key); // Update state for other component parts
-        currentS3BackKey = backResult.s3Key; // Use this for immediate API call
-        console.log("[UserRegForm] Back ID video S3 key obtained:", currentS3BackKey);
-      } else {
-        console.warn("[UserRegForm] Back ID video S3 upload failed or no key returned.");
-      }
+      // backUploadSuccess = backResult.success;
+      // console.log("[UserRegForm] Back video processing result:", backResult);
     }
     
-    // After attempting to get S3 keys for front and back, try to save them immediately if any were obtained.
-    if (currentS3FrontKey || currentS3BackKey) {
-      console.log("[UserRegForm] Attempting to save ID video S3 keys to DB:", { front: currentS3FrontKey, back: currentS3BackKey });
-      try {
-        const saveIDKeysResponse = await fetch('/api/save-video-keys', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            email,
-            frontS3Key: currentS3FrontKey,
-            backS3Key: currentS3BackKey
-          })
-        });
-        const saveIDKeysData = await saveIDKeysResponse.json();
-        if (!saveIDKeysResponse.ok || !saveIDKeysData.success) {
-          console.warn("[UserRegForm] Failed to save ID video S3 keys. Response:", saveIDKeysData);
-        } else {
-          console.log("[UserRegForm] ID video S3 keys API call successful.", saveIDKeysData);
-        }
-      } catch (error) {
-        console.error("[UserRegForm] Error calling /api/save-video-keys:", error);
-      }
-    } else {
-      console.log("[UserRegForm] No ID S3 keys obtained to save.");
-    }
-
-    setIsUploading(false); // Set loading to false after all operations in this function are done
-    handleSubmit(); // Proceed to the next step (face verification)
+    setIsUploading(false);
+    // The handleSubmit() call will proceed regardless of individual upload successes here,
+    // as the database key registration is handled by the backend API during URL generation.
+    // If a specific upload fails, its key won't be in the DB.
+    handleSubmit();
   };
 
   const saveRegistration = async () => {
     if (!email || !password || !faceVerified) {
-      alert("Cannot save registration: Missing email, password, or face verification.");
       return;
     }
+
+    
 
     setIsUploading(true);
 
     try {
-      // Video S3 keys (ID and Selfie) are now saved by calls to their respective dedicated API endpoints
-      // at earlier stages: 
-      // - /api/save-video-keys (for ID videos) is called in handleDirectS3Upload
-      // - /api/save-selfie-video-key (for selfie video) is called in handleVerificationComplete.
-
-      // This function now *only* saves the main registration details.
-      console.log("[UserRegForm] Calling /api/save-registration with details:", { email, idDetails: combinedIdDetails });
       const regResponse = await fetch('/api/save-registration', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1270,8 +1205,7 @@ export default function UserRegistrationForm() {
       const regData = await regResponse.json();
       
       if (regResponse.ok && regData.success) {
-        console.log("[UserRegForm] /api/save-registration successful.");
-        // Auto-login logic
+        
         try {
           const loginResponse = await fetch('/api/login', {
             method: 'POST',
@@ -1292,7 +1226,6 @@ export default function UserRegistrationForm() {
             handleFlip("form", "left");
           }
         } catch (loginError) {
-          console.error("[UserRegForm] Auto-login error after registration:", loginError);
           alert("Registration was successful, but an error occurred during auto-login. Please try logging in manually.");
           handleFlip("form", "left");
         }
@@ -1301,15 +1234,22 @@ export default function UserRegistrationForm() {
         alert("This email is already registered. Please log in instead.");
         handleFlip("form", "left");
       } else {
-        console.error("[UserRegForm] Error from /api/save-registration:", regData);
         alert("Error saving registration: " + (regData.error || "Unknown error"));
       }
     } catch (error) {
-      console.error("[UserRegForm] Network or system error during saveRegistration:", error);
+      setIsUploading(false);
       alert("A network error occurred, or the system was unable to save your registration. Please check your connection and try again. If the problem persists, note any error messages from the on-screen log.");
     } finally {
       setIsUploading(false);
     }
+    lastLivenessCheckTime.current = 0;
+    setSelfieVideoDataUrl(null);
+    setS3SelfieKey(null);
+    if (selfieMediaRecorderRef.current && selfieMediaRecorderRef.current.state === "recording") {
+      selfieMediaRecorderRef.current.stop();
+    }
+    clearTimeout(selfieVideoTimerIdRef.current);
+    selfieRecordedChunksRef.current = [];
   };
 
   return (
