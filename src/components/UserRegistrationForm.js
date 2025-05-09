@@ -127,6 +127,7 @@ export default function UserRegistrationForm() {
       
       if (response.ok && data.success) {
         setUserData(data);
+        stopCamera();
         if (data.isAdmin) {
           handleFlip("adminDashboard", "right");
         } else {
@@ -1233,6 +1234,7 @@ export default function UserRegistrationForm() {
 
           if (loginResponse.ok && loginData.success) {
             setUserData(loginData);
+            stopCamera();
             if (loginData.isAdmin) {
               handleFlip("adminDashboard", "right");
             } else {
