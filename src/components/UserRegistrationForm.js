@@ -1301,7 +1301,8 @@ export default function UserRegistrationForm() {
                 className="hidden"
               />
             </div>
-            {/* Selfie camera feed */}
+            {/* Selfie camera feed - This will be removed/hidden */}
+            {/* 
             <div className="w-full md:w-2/5 h-40 md:h-60 bg-gray-400 flex items-center justify-center rounded overflow-hidden">
               <video
                 ref={selfieVideoRef} // Use the new ref for selfie video
@@ -1311,6 +1312,7 @@ export default function UserRegistrationForm() {
                 className="w-full h-full object-cover rounded scale-x-[-1]" // Mirror selfie cam
               />
             </div>
+            */}
           </div>
           <div className="flex flex-col md:flex-row justify-center gap-3 mt-4">
             <button
