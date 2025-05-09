@@ -151,9 +151,8 @@ export default function UserRegistrationForm() {
           setFrontIdVideoDataUrl(null);
         }
         recordedChunksRef.current = [];
-        mediaRecorderRef.current = null; // Clear the ref after processing
+        mediaRecorderRef.current = null;
 
-        // Proceed with photo capture after video is processed
         if (videoRef.current && canvasRef.current) {
           const video = videoRef.current;
           const canvas = canvasRef.current;
@@ -164,13 +163,12 @@ export default function UserRegistrationForm() {
           const imageData = canvas.toDataURL("image/png");
           setPhotoFront(imageData);
         }
-        stopMediaTracks(); // Stop only tracks, recorder handled
+        stopMediaTracks();
         handleFlip("cameraBack", "right");
       };
       mediaRecorderRef.current.stop();
     } else {
-      setFrontIdVideoDataUrl(null); // Ensure it's null if not recorded
-      // Fallback if MediaRecorder wasn't active (e.g., browser incompatibility)
+      setFrontIdVideoDataUrl(null);
       if (videoRef.current && canvasRef.current) {
         const video = videoRef.current;
         const canvas = canvasRef.current;
@@ -181,7 +179,7 @@ export default function UserRegistrationForm() {
         const imageData = canvas.toDataURL("image/png");
         setPhotoFront(imageData);
       }
-      stopMediaTracks(); // Stop only tracks
+      stopMediaTracks();
       handleFlip("cameraBack", "right");
     }
   };
@@ -202,9 +200,8 @@ export default function UserRegistrationForm() {
           setBackIdVideoDataUrl(null);
         }
         recordedChunksRef.current = [];
-        mediaRecorderRef.current = null; // Clear the ref after processing
+        mediaRecorderRef.current = null;
 
-        // Proceed with photo capture after video is processed
         if (videoRef.current && canvasRef.current) {
           const video = videoRef.current;
           const canvas = canvasRef.current;
@@ -215,13 +212,12 @@ export default function UserRegistrationForm() {
           const imageData = canvas.toDataURL("image/png");
           setPhotoBack(imageData);
         }
-        stopMediaTracks(); // Stop only tracks, recorder handled
+        stopMediaTracks();
         handleFlip("completed", "right");
       };
       mediaRecorderRef.current.stop();
     } else {
-      setBackIdVideoDataUrl(null); // Ensure it's null if not recorded
-      // Fallback if MediaRecorder wasn't active
+      setBackIdVideoDataUrl(null);
       if (videoRef.current && canvasRef.current) {
         const video = videoRef.current;
         const canvas = canvasRef.current;
@@ -232,7 +228,7 @@ export default function UserRegistrationForm() {
         const imageData = canvas.toDataURL("image/png");
         setPhotoBack(imageData);
       }
-      stopMediaTracks(); // Stop only tracks
+      stopMediaTracks();
       handleFlip("completed", "right");
     }
   };
@@ -241,7 +237,6 @@ export default function UserRegistrationForm() {
     const file = event.target.files[0];
     if (!file) return;
 
-    // If a file is uploaded, no video is recorded via camera for this side.
     setFrontIdVideoDataUrl(null);
 
     try {
@@ -738,7 +733,6 @@ export default function UserRegistrationForm() {
           });
           
           setCombinedIdDetails(combined);
-          console.log("Combined ID Details:", combined);
         });
       });
     }
@@ -1017,10 +1011,10 @@ export default function UserRegistrationForm() {
           frontS3Key = presignedDataFront.key;
           frontUploadSuccess = true;
         } catch (error) {
-          console.error("[Front Video] Upload Error:", error.message);
+          // console.error("[Front Video] Upload Error:", error.message); // Removed
         }
       } else {
-        console.warn("[Front Video] DataURL existed but failed to convert to Blob.");
+        // console.warn("[Front Video] DataURL existed but failed to convert to Blob."); // Removed
       }
     }
 
@@ -1057,10 +1051,10 @@ export default function UserRegistrationForm() {
           backS3Key = presignedDataBack.key;
           backUploadSuccess = true;
         } catch (error) {
-          console.error("[Back Video] Upload Error:", error.message);
+          // console.error("[Back Video] Upload Error:", error.message); // Removed
         }
       } else {
-        console.warn("[Back Video] DataURL existed but failed to convert to Blob.");
+        // console.warn("[Back Video] DataURL existed but failed to convert to Blob."); // Removed
       }
     }
     
@@ -1070,30 +1064,7 @@ export default function UserRegistrationForm() {
     }
 
     setIsUploading(false);
-
-    let alertMessage = "";
-    if (frontIdVideoDataUrl && backIdVideoDataUrl) {
-        if (frontUploadSuccess && backUploadSuccess) alertMessage = `Both videos uploaded successfully!\nFront Key: ${frontS3Key}\nBack Key: ${backS3Key}`;
-        else if (frontUploadSuccess) alertMessage = `Front video uploaded (Key: ${frontS3Key}). Back video failed.`;
-        else if (backUploadSuccess) alertMessage = `Back video uploaded (Key: ${backS3Key}). Front video failed.`;
-        else alertMessage = "Both video uploads failed.";
-    } else if (frontIdVideoDataUrl) {
-        alertMessage = frontUploadSuccess ? `Front video uploaded successfully! Key: ${frontS3Key}` : "Front video upload failed.";
-    } else if (backIdVideoDataUrl) {
-        alertMessage = backUploadSuccess ? `Back video uploaded successfully! Key: ${backS3Key}` : "Back video upload failed.";
-    } else {
-        alertMessage = "No videos were provided to upload."; 
-    }
-
-    if (frontUploadSuccess || backUploadSuccess) {
-        alertMessage += `\n\nDatabase save: ${dbSaveResult.success ? "Success" : "Failed (" + dbSaveResult.message + ")"}`;
-    }
-    
-    if (!frontUploadSuccess || !backUploadSuccess || ( (frontUploadSuccess || backUploadSuccess) && !dbSaveResult.success)) {
-        alertMessage += "\n(Check console for more error details if any step failed.)";
-    }
-
-    alert(alertMessage);
+    handleSubmit();
   };
 
   const saveRegistration = async () => {
@@ -1138,7 +1109,7 @@ export default function UserRegistrationForm() {
         }
         frontVideoS3Key = presignedDataFront.key;
       } else if (frontIdVideoDataUrl) {
-        console.warn("Front video DataURL existed but failed to convert to Blob.");
+        // console.warn("Front video DataURL existed but failed to convert to Blob."); // Removed
       }
 
       const backVideoBlob = dataURLtoBlob(backIdVideoDataUrl);
@@ -1171,7 +1142,7 @@ export default function UserRegistrationForm() {
         }
         backVideoS3Key = presignedDataBack.key;
       } else if (backIdVideoDataUrl) {
-        console.warn("Back video DataURL existed but failed to convert to Blob.");
+        // console.warn("Back video DataURL existed but failed to convert to Blob."); // Removed
       }
 
       const regResponse = await fetch('/api/save-registration', {
@@ -1221,8 +1192,10 @@ export default function UserRegistrationForm() {
         alert("Error saving registration: " + (regData.error || "Unknown error"));
       }
     } catch (error) {
-      console.error("Error during S3 upload or saving registration: " + error.toString());
-      console.error("Full error object: " + JSON.stringify(error, Object.getOwnPropertyNames(error)));
+      // logToScreen("Error during S3 upload or saving registration: " + error.toString(), 'error');
+      // logToScreen("Full error object: " + JSON.stringify(error, Object.getOwnPropertyNames(error)), 'error');
+      // console.error("Error during S3 upload or saving registration: " + error.toString()); // Removed
+      // console.error("Full error object: " + JSON.stringify(error, Object.getOwnPropertyNames(error))); // Removed
       setIsUploading(false);
       alert("A network error occurred, or the system was unable to save your registration. Please check your connection and try again. If the problem persists, note any error messages from the on-screen log.");
     } finally {
@@ -1463,7 +1436,6 @@ export default function UserRegistrationForm() {
                         });
                         
                         setCombinedIdDetails(combined);
-                        console.log("Combined ID Details:", combined);
                       });
                     });
                   }
