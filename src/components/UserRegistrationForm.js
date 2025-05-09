@@ -39,24 +39,18 @@ export default function UserRegistrationForm() {
   const [backIdVideoDataUrl, setBackIdVideoDataUrl] = useState(null);
   const [s3FrontKey, setS3FrontKey] = useState(null);
   const [s3BackKey, setS3BackKey] = useState(null);
-  const [selfieVideoDataUrl, setSelfieVideoDataUrl] = useState(null);
-  const [s3SelfieKey, setS3SelfieKey] = useState(null);
 
   const videoRef = useRef(null);
   const faceVideoRef = useRef(null);
-  const selfieVideoRef = useRef(null);
   const canvasRef = useRef(null);
   const faceCanvasRef = useRef(null);
   const containerRef = useRef(null);
   const streamRef = useRef(null);
-  const selfieStreamRef = useRef(null);
   const fileInputRef = useRef(null);
   const lastDetectionTime = useRef(0);
   const lastLivenessCheckTime = useRef(0);
   const mediaRecorderRef = useRef(null);
   const recordedChunksRef = useRef([]);
-  const selfieMediaRecorderRef = useRef(null);
-  const selfieRecordedChunksRef = useRef([]);
 
   const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -159,7 +153,7 @@ export default function UserRegistrationForm() {
           setFrontIdVideoDataUrl(null);
         }
         recordedChunksRef.current = [];
-        // mediaRecorderRef.current = null; // Keep this active until stopMediaTracks is called explicitly
+        mediaRecorderRef.current = null;
 
         if (videoRef.current && canvasRef.current) {
           const video = videoRef.current;
@@ -171,36 +165,12 @@ export default function UserRegistrationForm() {
           const imageData = canvas.toDataURL("image/png");
           setPhotoFront(imageData);
         }
-        // Stop selfie recorder if active
-        if (selfieMediaRecorderRef.current && selfieMediaRecorderRef.current.state === "recording") {
-          selfieMediaRecorderRef.current.onstop = async () => {
-            const selfieVideoBlob = new Blob(selfieRecordedChunksRef.current, { type: 'video/webm' });
-            if (selfieVideoBlob.size > 0) {
-              try {
-                const selfieVideoData = await blobToDataURL(selfieVideoBlob);
-                setSelfieVideoDataUrl(selfieVideoData);
-              } catch (error) {
-                setSelfieVideoDataUrl(null);
-              }
-            } else {
-              setSelfieVideoDataUrl(null);
-            }
-            selfieRecordedChunksRef.current = [];
-            // selfieMediaRecorderRef.current = null; // Keep active until stopMediaTracks
-          };
-          selfieMediaRecorderRef.current.stop();
-        } else {
-          setSelfieVideoDataUrl(null); // Ensure it's null if not recorded
-        }
-
-        stopMediaTracks(); // Now stop all tracks and nullify recorders
+        stopMediaTracks();
         handleFlip("cameraBack", "right");
       };
       mediaRecorderRef.current.stop();
     } else {
-      // This block handles cases where MediaRecorder might not have started (e.g. no video stream)
       setFrontIdVideoDataUrl(null);
-      setSelfieVideoDataUrl(null); // Also ensure selfie video is null
       if (videoRef.current && canvasRef.current) {
         const video = videoRef.current;
         const canvas = canvasRef.current;
@@ -343,7 +313,7 @@ export default function UserRegistrationForm() {
         setCameraAvailable(true);
         setCameraStatus("active");
 
-        // Start MediaRecorder for ID capture (front or back)
+        // Start MediaRecorder if this is for ID capture (not face verification)
         if ((currentStep === "camera" || currentStep === "cameraBack") && window.MediaRecorder) {
           recordedChunksRef.current = []; // Clear previous chunks
           try {
@@ -351,8 +321,8 @@ export default function UserRegistrationForm() {
               'video/webm;codecs=vp9',
               'video/webm;codecs=vp8',
               'video/webm',
-              'video/mp4;codecs=h264', 
-              'video/mp4'
+              'video/mp4;codecs=h264', // May not be widely supported for recording
+              'video/mp4'             // May not be widely supported for recording
             ];
             let supportedMimeType = '';
 
@@ -365,68 +335,25 @@ export default function UserRegistrationForm() {
 
             if (!supportedMimeType) {
               mediaRecorderRef.current = null;
-              // Optionally log or alert the user that video recording might not work as expected
-            } else {
-              mediaRecorderRef.current = new MediaRecorder(stream, { mimeType: supportedMimeType });
-              mediaRecorderRef.current.ondataavailable = (event) => {
-                if (event.data.size > 0) {
-                  recordedChunksRef.current.push(event.data);
-                }
-              };
-              mediaRecorderRef.current.start();
+              return; // Exit if no supported MIME type
             }
+
+            mediaRecorderRef.current = new MediaRecorder(stream, { mimeType: supportedMimeType });
+            mediaRecorderRef.current.ondataavailable = (event) => {
+              if (event.data.size > 0) {
+                recordedChunksRef.current.push(event.data);
+              }
+            };
+            mediaRecorderRef.current.onstart = () => {
+            };
+            mediaRecorderRef.current.onstop = () => {
+            };
+            mediaRecorderRef.current.onerror = (event) => {
+            };
+            mediaRecorderRef.current.start();
           } catch (e) {
             mediaRecorderRef.current = null;
           }
-        }
-
-        // If capturing Front ID, also start selfie camera and recorder
-        if (currentStep === "camera") {
-          navigator.mediaDevices.getUserMedia({ video: { facingMode: "user", width: { ideal: 640 }, height: {ideal: 480 } } })
-            .then(selfieStream => {
-              selfieStreamRef.current = selfieStream;
-              if (selfieVideoRef.current) {
-                selfieVideoRef.current.srcObject = selfieStream;
-                selfieVideoRef.current.play();
-              }
-              if (window.MediaRecorder) {
-                selfieRecordedChunksRef.current = [];
-                try {
-                  const MimeTypesToTry = [
-                    'video/webm;codecs=vp9',
-                    'video/webm;codecs=vp8',
-                    'video/webm',
-                    'video/mp4;codecs=h264',
-                    'video/mp4'
-                  ];
-                  let selfieSupportedMimeType = '';
-                  for (const mimeType of MimeTypesToTry) {
-                    if (MediaRecorder.isTypeSupported(mimeType)) {
-                      selfieSupportedMimeType = mimeType;
-                      break;
-                    }
-                  }
-
-                  if (selfieSupportedMimeType) {
-                    selfieMediaRecorderRef.current = new MediaRecorder(selfieStream, { mimeType: selfieSupportedMimeType });
-                    selfieMediaRecorderRef.current.ondataavailable = (event) => {
-                      if (event.data.size > 0) {
-                        selfieRecordedChunksRef.current.push(event.data);
-                      }
-                    };
-                    selfieMediaRecorderRef.current.start();
-                  } else {
-                    selfieMediaRecorderRef.current = null;
-                  }
-                } catch (e) {
-                  selfieMediaRecorderRef.current = null;
-                }
-              }
-            })
-            .catch(err => {
-              // Handle selfie camera error (e.g., user denied permission for second camera)
-              // Potentially set a state to inform the user or proceed without selfie video
-            });
         }
       })
       .catch((err) => {
@@ -441,25 +368,14 @@ export default function UserRegistrationForm() {
       mediaRecorderRef.current.onstop = null; // Remove any existing onstop handler
       mediaRecorderRef.current.stop();
       recordedChunksRef.current = []; // Clear chunks as we are not saving this video
+    } else if (mediaRecorderRef.current) {
     }
     mediaRecorderRef.current = null;
-
-    if (selfieMediaRecorderRef.current && selfieMediaRecorderRef.current.state === "recording") {
-      selfieMediaRecorderRef.current.onstop = null;
-      selfieMediaRecorderRef.current.stop();
-      selfieRecordedChunksRef.current = [];
-    }
-    selfieMediaRecorderRef.current = null;
 
     const stream = streamRef.current;
     if (stream) {
       stream.getTracks().forEach((track) => track.stop());
       streamRef.current = null;
-    }
-    const selfieStream = selfieStreamRef.current;
-    if (selfieStream) {
-      selfieStream.getTracks().forEach((track) => track.stop());
-      selfieStreamRef.current = null;
     }
   };
 
@@ -469,32 +385,6 @@ export default function UserRegistrationForm() {
     if (stream) {
       stream.getTracks().forEach((track) => track.stop());
       streamRef.current = null;
-    }
-    // Also stop selfie stream tracks if active
-    const selfieStream = selfieStreamRef.current;
-    if (selfieStream) {
-      selfieStream.getTracks().forEach((track) => track.stop());
-      selfieStreamRef.current = null;
-    }
-
-    // Nullify recorder instances as their streams are now gone
-    if (mediaRecorderRef.current) {
-      // If it was recording and stop wasn't called with an onstop handler to process data,
-      // ensure it is explicitly stopped here. Data might be lost if not handled before this.
-      if (mediaRecorderRef.current.state === "recording") {
-        mediaRecorderRef.current.onstop = null; // Prevent any lingering onstop handlers
-        mediaRecorderRef.current.stop();
-      }
-      mediaRecorderRef.current = null;
-      recordedChunksRef.current = []; // Clear any unprocessed chunks
-    }
-    if (selfieMediaRecorderRef.current) {
-      if (selfieMediaRecorderRef.current.state === "recording") {
-        selfieMediaRecorderRef.current.onstop = null;
-        selfieMediaRecorderRef.current.stop();
-      }
-      selfieMediaRecorderRef.current = null;
-      selfieRecordedChunksRef.current = [];
     }
   };
 
@@ -507,10 +397,8 @@ export default function UserRegistrationForm() {
     setCombinedIdDetails(null);
     setFrontIdVideoDataUrl(null);
     setBackIdVideoDataUrl(null);
-    setSelfieVideoDataUrl(null); // Reset selfie video data URL
     setS3FrontKey(null);
     setS3BackKey(null);
-    setS3SelfieKey(null); // Reset selfie S3 key
 
     await handleFlip("camera", "left");
     await delay(50);
@@ -1070,11 +958,11 @@ export default function UserRegistrationForm() {
     try {
       const apiUrl = '/api/generate-s3-upload-url';
       const payload = {
-        fileType: videoBlob.type || 'video/webm', // Ensure a default fileType if blob.type is empty
+        fileType: videoBlob.type,
         email: emailForAPI,
         idSide: idSideForAPI
       };
-      console.log(`[UserRegForm] Requesting S3 URL for ${idSideForAPI} ID/Selfie. Payload:`, JSON.stringify(payload));
+      console.log(`[UserRegForm] Requesting S3 URL for ${idSideForAPI} ID. Payload:`, JSON.stringify(payload));
 
       const response = await fetch(apiUrl, {
         method: 'POST',
@@ -1113,48 +1001,36 @@ export default function UserRegistrationForm() {
   };
 
   const handleDirectS3Upload = async () => {
-    if (!frontIdVideoDataUrl && !backIdVideoDataUrl && !selfieVideoDataUrl) {
+    if (!frontIdVideoDataUrl && !backIdVideoDataUrl) {
       alert("No videos captured or selected to upload.");
       return;
     }
 
     setIsUploading(true);
-    let frontUploadResult = { success: false, s3Key: null };
-    let backUploadResult = { success: false, s3Key: null };
-    let selfieUploadResult = { success: false, s3Key: null };
-
+    // let frontUploadSuccess = false; // Can be used if we need to track overall success
+    // let backUploadSuccess = false;
 
     console.log("[UserRegForm] Checking frontIdVideoDataUrl:", frontIdVideoDataUrl ? "Exists" : "Does NOT exist or is null");
     if (frontIdVideoDataUrl) {
       console.log("[UserRegForm] Processing front video...");
-      frontUploadResult = await processVideoForS3(frontIdVideoDataUrl, 'front', email);
-      if (frontUploadResult.success && frontUploadResult.s3Key) {
-        setS3FrontKey(frontUploadResult.s3Key);
-      }
+      const frontResult = await processVideoForS3(frontIdVideoDataUrl, 'front', email);
+      // frontUploadSuccess = frontResult.success;
+      // console.log("[UserRegForm] Front video processing result:", frontResult);
     }
 
     console.log("[UserRegForm] Checking backIdVideoDataUrl:", backIdVideoDataUrl ? "Exists" : "Does NOT exist or is null");
     if (backIdVideoDataUrl) {
       console.log("[UserRegForm] Processing back video...");
-      backUploadResult = await processVideoForS3(backIdVideoDataUrl, 'back', email);
-      if (backUploadResult.success && backUploadResult.s3Key) {
-        setS3BackKey(backUploadResult.s3Key);
-      }
-    }
-    
-    console.log("[UserRegForm] Checking selfieVideoDataUrl:", selfieVideoDataUrl ? "Exists" : "Does NOT exist or is null");
-    if (selfieVideoDataUrl) {
-      console.log("[UserRegForm] Processing selfie video...");
-      selfieUploadResult = await processVideoForS3(selfieVideoDataUrl, 'selfie', email);
-      if (selfieUploadResult.success && selfieUploadResult.s3Key) {
-        setS3SelfieKey(selfieUploadResult.s3Key);
-      }
+      const backResult = await processVideoForS3(backIdVideoDataUrl, 'back', email);
+      // backUploadSuccess = backResult.success;
+      // console.log("[UserRegForm] Back video processing result:", backResult);
     }
     
     setIsUploading(false);
-    // The handleSubmit() call will proceed. The backend API during URL generation handles DB key registration.
-    // If a specific upload fails, its key won't be in the DB / or won't be updated.
-    handleSubmit(); // This transitions to the face verification step
+    // The handleSubmit() call will proceed regardless of individual upload successes here,
+    // as the database key registration is handled by the backend API during URL generation.
+    // If a specific upload fails, its key won't be in the DB.
+    handleSubmit();
   };
 
   const saveRegistration = async () => {
@@ -1162,28 +1038,19 @@ export default function UserRegistrationForm() {
       return;
     }
 
+    
+
     setIsUploading(true);
 
     try {
-      const registrationPayload = {
-        email, 
-        password,
-        idDetails: combinedIdDetails,
-        // s3Keys will be updated by the generate-s3-url endpoint directly.
-        // However, if you wanted to pass them from client after upload confirmation:
-        // s3FrontKey: s3FrontKey, 
-        // s3BackKey: s3BackKey,
-        // s3SelfieKey: s3SelfieKey 
-      };
-      
-      // The s3 keys (s3FrontKey, s3BackKey, s3SelfieKey) are already stored by the 
-      // generate-s3-upload-url API. We don't need to send them again during final registration.
-      // The save-registration API should ideally fetch the user document which now contains these keys.
-
       const regResponse = await fetch('/api/save-registration', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(registrationPayload)
+        body: JSON.stringify({ 
+          email, 
+          password,
+          idDetails: combinedIdDetails
+        })
       });
       
       const regData = await regResponse.json();
@@ -1284,35 +1151,20 @@ export default function UserRegistrationForm() {
           <h2 className="text-lg font-medium text-gray-700">
             Capture ID Front
           </h2>
-          <div className="flex flex-col md:flex-row gap-2 justify-center">
-            {/* Main camera for ID front */}
-            <div className="w-full md:w-3/5 h-60 bg-gray-300 flex items-center justify-center rounded overflow-hidden">
-              <video
-                ref={videoRef}
-                autoPlay
-                playsInline
-                muted
-                className="w-full h-full object-cover rounded"
-              />
-              <canvas
-                ref={canvasRef}
-                width={320}
-                height={240}
-                className="hidden"
-              />
-            </div>
-            {/* Selfie camera feed - This will be removed/hidden */}
-            {/* 
-            <div className="w-full md:w-2/5 h-40 md:h-60 bg-gray-400 flex items-center justify-center rounded overflow-hidden">
-              <video
-                ref={selfieVideoRef} // Use the new ref for selfie video
-                autoPlay
-                playsInline
-                muted
-                className="w-full h-full object-cover rounded scale-x-[-1]" // Mirror selfie cam
-              />
-            </div>
-            */}
+          <div className="w-full h-60 bg-gray-300 flex items-center justify-center rounded overflow-hidden">
+            <video
+              ref={videoRef}
+              autoPlay
+              playsInline
+              muted
+              className="w-full h-full object-cover rounded"
+            />
+            <canvas
+              ref={canvasRef}
+              width={320}
+              height={240}
+              className="hidden"
+            />
           </div>
           <div className="flex flex-col md:flex-row justify-center gap-3 mt-4">
             <button
@@ -1497,7 +1349,6 @@ export default function UserRegistrationForm() {
                 // Reset video URLs when retaking photos, as they are linked to the photo capture session
                 setFrontIdVideoDataUrl(null);
                 setBackIdVideoDataUrl(null);
-                setSelfieVideoDataUrl(null);
                 retakePhoto();
               }}
               className="px-5 py-2 bg-gray-800 text-white hover:bg-gray-700 transition shadow-md"
@@ -1506,9 +1357,9 @@ export default function UserRegistrationForm() {
             </button>
             <button
               onClick={handleDirectS3Upload}
-              disabled={isUploading || (!frontIdVideoDataUrl && !backIdVideoDataUrl && !selfieVideoDataUrl)}
+              disabled={isUploading || (!frontIdVideoDataUrl && !backIdVideoDataUrl)}
               className={`px-6 py-2 text-black transition shadow-md ${
-                (isUploading || (!frontIdVideoDataUrl && !backIdVideoDataUrl && !selfieVideoDataUrl))
+                (isUploading || (!frontIdVideoDataUrl && !backIdVideoDataUrl))
                   ? "bg-gray-300 text-gray-500 cursor-not-allowed"
                   : "bg-yellow-400 hover:bg-yellow-300"
               }`}
