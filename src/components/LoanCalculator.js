@@ -104,6 +104,9 @@ export default function LoanCalculator({ onGetLoan }) {
           <span>{MIN_PERIOD} months</span>
           <span>{MAX_PERIOD} months</span>
         </div>
+        <div className="text-xs text-gray-500 text-right mt-1">
+          Interest rate: <span className="font-medium">{(getInterestRate(period) * 100).toFixed(0)}%</span> annual
+        </div>
       </div>
       <div className="bg-gray-50 rounded-lg p-4 flex flex-col gap-2">
         <div className="flex justify-between items-center">
@@ -113,6 +116,14 @@ export default function LoanCalculator({ onGetLoan }) {
         <div className="flex justify-between items-center text-xs text-gray-500">
           <span>With insurance option</span>
           <span className="font-medium text-base">{alternative} lv.</span>
+        </div>
+        <div className="flex justify-between items-center text-xs text-gray-500 pt-2">
+          <span>Total repayment:</span>
+          <span className="font-medium">{(monthly * period).toFixed(2)} lv.</span>
+        </div>
+        <div className="flex justify-between items-center text-xs text-gray-500">
+          <span>Total with insurance:</span>
+          <span className="font-medium">{(alternative * period).toFixed(2)} lv.</span>
         </div>
       </div>
       <button
