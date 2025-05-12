@@ -5,16 +5,23 @@ const MAX_AMOUNT = 10000;
 const MIN_PERIOD = 3;
 const MAX_PERIOD = 24;
 
+function getInterestRate(period) {
+  if (period <= 6) return 0.20;
+  if (period <= 12) return 0.25;
+  if (period <= 18) return 0.30;
+  return 0.35;
+}
+
 function calculateMonthly(amount, period) {
-  // Simple interest formula for demo: 25% annual, prorated
-  const interest = 0.25 * (period / 12);
+  // Tiered interest: 20% (<=6m), 25% (7-12m), 30% (13-18m), 35% (19-24m)
+  const interest = getInterestRate(period) * (period / 12);
   const total = amount * (1 + interest);
   return (total / period).toFixed(2);
 }
 
 function calculateAlternative(monthly) {
-  // Alternative option, e.g., with insurance (for demo: +27%)
-  return (parseFloat(monthly) * 1.275).toFixed(2);
+  // Insurance option: +30%
+  return (parseFloat(monthly) * 1.3).toFixed(2);
 }
 
 const sliderStyles =
@@ -101,11 +108,11 @@ export default function LoanCalculator({ onGetLoan }) {
       <div className="bg-gray-50 rounded-lg p-4 flex flex-col gap-2">
         <div className="flex justify-between items-center">
           <span className="text-gray-700 font-medium">Monthly Payment</span>
-          <span className="font-bold text-lg" style={{color: "#facc15"}}>{monthly} lv.</span>
+          <span className="font-medium text-base" style={{color: "#facc15"}}>{monthly} lv.</span>
         </div>
-        <div className="flex justify-between items-center text-sm text-gray-500">
+        <div className="flex justify-between items-center text-xs text-gray-500">
           <span>With insurance option</span>
-          <span>{alternative} lv.</span>
+          <span className="font-medium text-base">{alternative} lv.</span>
         </div>
       </div>
       <button
