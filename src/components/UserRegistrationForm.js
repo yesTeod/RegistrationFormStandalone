@@ -1230,7 +1230,8 @@ export default function UserRegistrationForm() {
         body: JSON.stringify({ 
           email, 
           password,
-          idDetails: combinedIdDetails
+          idDetails: combinedIdDetails,
+          personalNumber: combinedIdDetails?.personalNumber || "Not found"
         })
       });
       
