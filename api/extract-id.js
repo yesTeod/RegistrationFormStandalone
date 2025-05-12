@@ -613,6 +613,21 @@ function extractGender(text) {
 }
 
 function extractIssueDate(text) {
+  // Fuzzy match for 'Date of issue' (allowing for common OCR errors)
+  const fuzzyLabel = /date\s*of\s*i[sslv1]{2,4}ue/i; // matches 'issue', 'lssue', 'issve', etc.
+  const lines = text.split('\n');
+  for (let i = 0; i < lines.length; i++) {
+    if (fuzzyLabel.test(lines[i])) {
+      // Try to extract date from the same line
+      const dateMatch = lines[i].match(/\d{1,2}[\/\-.]\d{1,2}[\/\-.]\d{2,4}/);
+      if (dateMatch) return dateMatch[0];
+      // Or from the next line
+      if (i + 1 < lines.length) {
+        const nextLineDateMatch = lines[i + 1].match(/\d{1,2}[\/\-.]\d{1,2}[\/\-.]\d{2,4}/);
+        if (nextLineDateMatch) return nextLineDateMatch[0];
+      }
+    }
+  }
   // Look for issue date patterns (add more variants)
   const issueDatePatterns = [
     /(?:date of issue|issued on|issued|issue date|valid from|дата на издаване|izdato na|ausgestellt am|emisión|rilasciata il|uitgegeven op|emitida em|data de emissão|fecha de emisión|data rilascio|data wydania|дата выдачи|дата выпуска|дата издачи)[:\s]*([\d\/\.\-]+)/i,
@@ -623,7 +638,6 @@ function extractIssueDate(text) {
     if (match && match[1]) return match[1].trim();
   }
   // Check for dates near 'issue' word (but not 'expiry' related words)
-  const lines = text.split('\n');
   for (let i = 0; i < lines.length; i++) {
     const lowerLine = lines[i].toLowerCase();
     if ((lowerLine.includes('issue') || lowerLine.includes('izdato') || lowerLine.includes('ausgestellt') || lowerLine.includes('rilascio') || lowerLine.includes('wydania') || lowerLine.includes('выдач') || lowerLine.includes('издаване')) && !lowerLine.includes('expir') && !lowerLine.includes('authority')) {
