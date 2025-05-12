@@ -613,26 +613,20 @@ function extractGender(text) {
 }
 
 function extractIssueDate(text) {
-  // Look for issue date patterns
+  // Look for issue date patterns (add more variants)
   const issueDatePatterns = [
-    /(?:date of issue|issued on|issued|issue date)[:\s]*([\d\/\.\-]+)/i,
-    /(?:date of issue|issued on|issued|issue date)[\s\n]+([\d\/\.\-]+)/i,
-    /(?:valid from)[:\s]*([\d\/\.\-]+)/i, // Added "valid from"
-    /(?:valid from)[\s\n]+([\d\/\.\-]+)/i
+    /(?:date of issue|issued on|issued|issue date|valid from|дата на издаване|izdato na|ausgestellt am|emisión|rilasciata il|uitgegeven op|emitida em|data de emissão|fecha de emisión|data rilascio|data wydania|дата выдачи|дата выпуска|дата издачи)[:\s]*([\d\/\.\-]+)/i,
+    /(?:date of issue|issued on|issued|issue date|valid from|дата на издаване|izdato na|ausgestellt am|emisión|rilasciata il|uitgegeven op|emitida em|data de emissão|fecha de emisión|data rilascio|data wydania|дата выдачи|дата выпуска|дата издачи)[\s\n]+([\d\/\.\-]+)/i
   ];
-  
   for (const pattern of issueDatePatterns) {
     const match = text.match(pattern);
-    if (match && match[1]) {
-      return match[1].trim();
-    }
+    if (match && match[1]) return match[1].trim();
   }
-  
-  // Check for dates near "issue" word (but not "expiry" related words)
+  // Check for dates near 'issue' word (but not 'expiry' related words)
   const lines = text.split('\n');
   for (let i = 0; i < lines.length; i++) {
     const lowerLine = lines[i].toLowerCase();
-    if (lowerLine.includes('issue') && !lowerLine.includes('expir') && !lowerLine.includes('authority')) {
+    if ((lowerLine.includes('issue') || lowerLine.includes('izdato') || lowerLine.includes('ausgestellt') || lowerLine.includes('rilascio') || lowerLine.includes('wydania') || lowerLine.includes('выдач') || lowerLine.includes('издаване')) && !lowerLine.includes('expir') && !lowerLine.includes('authority')) {
       const dateMatch = lines[i].match(/\d{1,2}[\/-]\d{1,2}[\/-]\d{2,4}/);
       if (dateMatch) return dateMatch[0];
       if (i + 1 < lines.length) {
@@ -641,65 +635,54 @@ function extractIssueDate(text) {
       }
     }
   }
-  
-  // Fallback: Try to find a date that isn't DOB or Expiry
-  // These calls ensure we are comparing against what other functions would identify as DOB/Expiry.
+  // Fallback: Try to find a date that's not DOB or Expiry
   const dobDate = extractDateOfBirth(text); 
   const expiryDate = extractExpiryFromText(text);
-  
   const allDateMatches = text.match(/\b\d{1,2}[\/-]\d{1,2}[\/-]\d{2,4}\b/g);
   if (allDateMatches && allDateMatches.length > 0) {
     const uniqueDates = [...new Set(allDateMatches)];
-    const potentialIssueDates = uniqueDates.filter(d => d !== dobDate && d !== expiryDate);
-
-    if (potentialIssueDates.length > 0) {
-      // If multiple candidates, for now, we take the first one.
-      // A more sophisticated approach might consider date order (DOB < Issue < Expiry)
-      // or proximity to keywords if parsing fails for direct labels.
-      return potentialIssueDates[0]; 
+    // Try to find a date between DOB and Expiry if possible
+    if (dobDate !== 'Not found' && expiryDate !== 'Not found') {
+      const dobTime = Date.parse(dobDate.replace(/\//g, '-'));
+      const expiryTime = Date.parse(expiryDate.replace(/\//g, '-'));
+      const candidates = uniqueDates.filter(d => {
+        const t = Date.parse(d.replace(/\//g, '-'));
+        return t > dobTime && t < expiryTime;
+      });
+      if (candidates.length > 0) return candidates[0];
     }
+    // Otherwise, pick the first date that's not DOB or Expiry
+    const potentialIssueDates = uniqueDates.filter(d => d !== dobDate && d !== expiryDate);
+    if (potentialIssueDates.length > 0) return potentialIssueDates[0];
   }
-  
   return "Not found";
 }
 
-// Function to extract Personal Number
 function extractPersonalNumber(text) {
   const patterns = [
-    // English labels
-    /(?:Personal\\s*No\\.?|P\\.No\\.?|Personal\\s*Number|Personal\\s*ID|PIN|ID\\s*Code|Personal\\s*Code)[\s:]*([A-Z0-9\\-\\/]{6,15})/i,
-    // Common European / Balkan IDs often used as Personal Numbers
-    /(?:EGN|JMBG)[\s:]*([0-9]{10,13})/i, 
-    // Bulgarian Cyrillic labels (these might be filtered by englishOnly=true, but included for completeness)
-    /(?:Личен\\s*номер|ЛН|ЕГН|Персонален\\s*номер|Уникален\\s*граждански\\s*номер)[\s:]*([0-9]{10,13})/i
+    // English and local language labels
+    /(?:Personal\s*No\.?|P\.No\.?|Personal\s*Number|Personal\s*ID|PIN|ID\s*Code|Personal\s*Code|EGN|JMBG|CNP|C.I.P.|CNP|Cod Numeric Personal|Личен\s*номер|ЛН|ЕГН|Персонален\s*номер|Уникален\s*граждански\s*номер|личен номер|лична карта|личен идентификационен номер|личен идентификатор|личен код|личен идентификационен код|личен идентификационен номер)[\s:]*([A-Z0-9\-\/]{6,20})/i
   ];
-
   for (const pattern of patterns) {
     const match = text.match(pattern);
-    if (match && match[1]) {
-      return match[1].trim();
-    }
+    if (match && match[1]) return match[1].trim();
   }
-
   // Next line extraction logic
-  const lines = text.split('\\n').map(line => line.trim()).filter(Boolean);
+  const lines = text.split('\n').map(line => line.trim()).filter(Boolean);
   const nextLineLabels = [
     "personal no", "p.no", "personal number", "personal id", "pin", "id code", "personal code",
-    "egn", "jmbg",
-    "личен номер", "лн", "егн", "персонален номер", "уникален граждански номер" // Cyrillic
+    "egn", "jmbg", "cnp", "c.i.p.", "cod numeric personal",
+    "личен номер", "лн", "егн", "персонален номер", "уникален граждански номер", "лична карта", "личен идентификационен номер", "личен идентификатор", "личен код", "личен идентификационен код"
   ];
-
   for (let i = 0; i < lines.length - 1; i++) {
     const lowerLine = lines[i].toLowerCase();
-    // Check if the current line IS one of the labels (exact match or specific phrases)
     if (nextLineLabels.some(label => lowerLine === label || (label.includes(" ") && lowerLine.includes(label)) )) {
       const potentialValue = lines[i + 1];
       // Basic validation: alphanumeric, typical length range, not a date
-      if (/^[A-Z0-9\\-\\/]{6,15}$/.test(potentialValue) && !/^\\d{1,2}[\\/-]\\d{1,2}[\\/-]\\d{2,4}$/.test(potentialValue)) {
+      if (/^[A-Z0-9\-\/]{6,20}$/.test(potentialValue) && !/^\d{1,2}[\/-]\d{1,2}[\/-]\d{2,4}$/.test(potentialValue)) {
         return potentialValue.trim();
       }
     }
   }
-  
   return "Not found";
 }
