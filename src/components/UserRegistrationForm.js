@@ -45,8 +45,6 @@ export default function UserRegistrationForm() {
   const [idDetectionMessage, setIdDetectionMessage] = useState("Align ID card within the frame.");
   const [idGuideBoxColor, setIdGuideBoxColor] = useState("rgba(250, 204, 21, 0.8)");
   const [isCompletingVerification, setIsCompletingVerification] = useState(false);
-  const [frontUploadProgress, setFrontUploadProgress] = useState(0);
-  const [backUploadProgress, setBackUploadProgress] = useState(0);
 
   const videoRef = useRef(null);
   const faceVideoRef = useRef(null);
@@ -154,24 +152,28 @@ export default function UserRegistrationForm() {
     if (mediaRecorderRef.current && mediaRecorderRef.current.state === "recording") {
       mediaRecorderRef.current.onstop = async () => {
         const videoBlob = new Blob(recordedChunksRef.current, { type: 'video/webm' });
+
         if (videoBlob.size > 0) {
-          setIsUploading(true);
-          setFrontUploadProgress(0);
-          processVideoForS3(videoBlob, 'front', email, setFrontUploadProgress).then(result => {
-            if (result.success) setS3FrontKey(result.s3Key);
-            setIsUploading(false);
-          });
           try {
             const videoDataUrl = await blobToDataURL(videoBlob);
             setFrontIdVideoDataUrl(videoDataUrl);
+            // Start S3 upload for front video as soon as it's captured
+            setIsUploading(true);
+            const result = await processVideoForS3(videoDataUrl, 'front', email);
+            if (result.success && result.s3Key) {
+              setS3FrontKey(result.s3Key);
+            }
+            setIsUploading(false);
           } catch (error) {
             setFrontIdVideoDataUrl(null);
+            setIsUploading(false);
           }
         } else {
           setFrontIdVideoDataUrl(null);
         }
         recordedChunksRef.current = [];
         mediaRecorderRef.current = null;
+
         if (videoRef.current && canvasRef.current) {
           const video = videoRef.current;
           const canvas = canvasRef.current;
@@ -207,24 +209,28 @@ export default function UserRegistrationForm() {
     if (mediaRecorderRef.current && mediaRecorderRef.current.state === "recording") {
       mediaRecorderRef.current.onstop = async () => {
         const videoBlob = new Blob(recordedChunksRef.current, { type: 'video/webm' });
+
         if (videoBlob.size > 0) {
-          setIsUploading(true);
-          setBackUploadProgress(0);
-          processVideoForS3(videoBlob, 'back', email, setBackUploadProgress).then(result => {
-            if (result.success) setS3BackKey(result.s3Key);
-            setIsUploading(false);
-          });
           try {
             const videoDataUrl = await blobToDataURL(videoBlob);
             setBackIdVideoDataUrl(videoDataUrl);
+            // Start S3 upload for back video as soon as it's captured
+            setIsUploading(true);
+            const result = await processVideoForS3(videoDataUrl, 'back', email);
+            if (result.success && result.s3Key) {
+              setS3BackKey(result.s3Key);
+            }
+            setIsUploading(false);
           } catch (error) {
             setBackIdVideoDataUrl(null);
+            setIsUploading(false);
           }
         } else {
           setBackIdVideoDataUrl(null);
         }
         recordedChunksRef.current = [];
         mediaRecorderRef.current = null;
+
         if (videoRef.current && canvasRef.current) {
           const video = videoRef.current;
           const canvas = canvasRef.current;
@@ -754,7 +760,7 @@ export default function UserRegistrationForm() {
         setIsUploading(true); // Indicate upload activity
         setIsCompletingVerification(true); // Start loading for continue button
         console.log("[UserRegForm] Processing selfie video for S3...");
-        const selfieResult = await processVideoForS3(dataURLtoBlob(selfieVideoDataUrl), 'selfie', email, null);
+        const selfieResult = await processVideoForS3(selfieVideoDataUrl, 'selfie', email);
         if (selfieResult.success && selfieResult.s3Key) {
           setS3SelfieKey(selfieResult.s3Key);
           console.log("[UserRegForm] Selfie video S3 upload successful. Key:", selfieResult.s3Key);
@@ -1109,11 +1115,17 @@ export default function UserRegistrationForm() {
     );
   };
 
-  const processVideoForS3 = async (videoBlob, idSideForAPI, emailForAPI, onProgress) => {
-    if (!videoBlob) {
-      console.log(`[UserRegForm] No video blob provided for ${idSideForAPI}, skipping.`);
+  const processVideoForS3 = async (videoDataUrl, idSideForAPI, emailForAPI) => {
+    if (!videoDataUrl) {
+      console.log(`[UserRegForm] No video data URL provided for ${idSideForAPI}, skipping.`);
       return { success: false, s3Key: null };
     }
+    const videoBlob = dataURLtoBlob(videoDataUrl);
+    if (!videoBlob) {
+      console.warn(`[UserRegForm] Failed to convert DataURL to Blob for ${idSideForAPI}.`);
+      return { success: false, s3Key: null };
+    }
+
     try {
       const apiUrl = '/api/generate-s3-upload-url';
       const payload = {
@@ -1121,44 +1133,38 @@ export default function UserRegistrationForm() {
         email: emailForAPI,
         idSide: idSideForAPI
       };
+      console.log(`[UserRegForm] Requesting S3 URL for ${idSideForAPI} ID. Payload:`, JSON.stringify(payload));
+
       const response = await fetch(apiUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
+
       if (!response.ok) {
         let errorDetail = `HTTP status ${response.status}`;
         try { const errorJson = await response.json(); errorDetail = errorJson.error || JSON.stringify(errorJson); }
         catch (e) { errorDetail = (await response.text()) || errorDetail; }
         throw new Error(`Failed to get S3 pre-signed URL (${idSideForAPI}): ${errorDetail}`);
       }
+
       const presignedData = await response.json();
       if (!presignedData.success || !presignedData.url || !presignedData.fields || !presignedData.key) {
         throw new Error(presignedData.error || `Invalid data from pre-signed URL API (${idSideForAPI})`);
       }
+
       const formData = new FormData();
       Object.entries(presignedData.fields).forEach(([key, value]) => formData.append(key, value));
       formData.append("file", videoBlob);
-      // Use XMLHttpRequest for progress
-      await new Promise((resolve, reject) => {
-        const xhr = new XMLHttpRequest();
-        xhr.open('POST', presignedData.url);
-        xhr.upload.onprogress = (event) => {
-          if (event.lengthComputable && onProgress) {
-            onProgress(Math.round((event.loaded / event.total) * 100));
-          }
-        };
-        xhr.onload = () => {
-          if (xhr.status >= 200 && xhr.status < 300) {
-            resolve();
-          } else {
-            reject(new Error(`S3 upload failed (${idSideForAPI}): ${xhr.status} - ${xhr.statusText}`));
-          }
-        };
-        xhr.onerror = () => reject(new Error(`S3 upload failed (${idSideForAPI}): Network error`));
-        xhr.send(formData);
-      });
+
+      const s3UploadResponse = await fetch(presignedData.url, { method: 'POST', body: formData });
+      if (!s3UploadResponse.ok) {
+        const errorText = await s3UploadResponse.text();
+        throw new Error(`S3 upload failed (${idSideForAPI}): ${s3UploadResponse.status} - ${errorText}`);
+      }
+      console.log(`[UserRegForm] S3 upload successful for ${idSideForAPI}. Key: ${presignedData.key}`);
       return { success: true, s3Key: presignedData.key };
+
     } catch (error) {
       console.error(`[UserRegForm] Error in processVideoForS3 for ${idSideForAPI}:`, error.message, error.stack);
       return { success: false, s3Key: null };
@@ -1166,62 +1172,7 @@ export default function UserRegistrationForm() {
   };
 
   const handleDirectS3Upload = async () => {
-    if (!frontIdVideoDataUrl && !backIdVideoDataUrl) {
-      alert("No videos captured or selected to upload.");
-      return;
-    }
-
-    setIsUploading(true);
-    const uploadPromises = [];
-
-    // Helper to wrap processVideoForS3 with logging and error handling for Promise.all
-    const createUploadPromise = (videoDataUrl, idSide, emailForAPI) => {
-      console.log(`[UserRegForm] Preparing ${idSide} ID video for S3 upload.`);
-      return processVideoForS3(dataURLtoBlob(videoDataUrl), idSide, emailForAPI, null)
-        .then(result => {
-          console.log(`[UserRegForm] ${idSide} ID video S3 processing finished. Success: ${result.success}, Key: ${result.s3Key || 'N/A'}`);
-          // The key itself isn't set to component state here, assuming backend association.
-          return result; 
-        })
-        .catch(error => {
-          // This catch is for unexpected errors if processVideoForS3 itself throws an unhandled exception.
-          // processVideoForS3 is designed to catch its own errors and return { success: false, ... }
-          console.error(`[UserRegForm] Critical error during ${idSide} ID video S3 processing:`, error);
-          return { success: false, s3Key: null, error: `Critical processing error for ${idSide} ID` }; 
-        });
-    };
-
-    if (frontIdVideoDataUrl) {
-      uploadPromises.push(createUploadPromise(frontIdVideoDataUrl, 'front', email));
-    }
-
-    if (backIdVideoDataUrl) {
-      uploadPromises.push(createUploadPromise(backIdVideoDataUrl, 'back', email));
-    }
-    
-    try {
-      if (uploadPromises.length > 0) {
-        console.log(`[UserRegForm] Starting ${uploadPromises.length} ID video S3 upload(s) in parallel.`);
-        // Promise.all will wait for all wrapped promises to resolve.
-        // Each wrapped promise resolves to the result object from processVideoForS3 or an error object.
-        // const results = await Promise.all(uploadPromises); // results can be inspected if needed
-        await Promise.all(uploadPromises);
-        console.log("[UserRegForm] All queued ID video S3 uploads have settled.");
-      } else {
-        // This path should ideally not be hit due to the initial check, but as a fallback.
-        console.log("[UserRegForm] No ID video data was available for S3 upload.");
-      }
-    } catch (error) {
-      // This catch is for errors from Promise.all itself if one of the promises passed to it rejects
-      // in an unexpected way not caught by the inner .catch of createUploadPromise.
-      console.error("[UserRegForm] An unexpected error occurred while waiting for all ID video S3 uploads:", error);
-    } finally {
-      setIsUploading(false);
-      // Proceed to the next step (face verification)
-      // The success/failure of individual S3 uploads doesn't block handleSubmit,
-      // as the backend handles key association.
-      handleSubmit();
-    }
+    handleSubmit();
   };
 
   const saveRegistration = async () => {
@@ -1240,8 +1191,7 @@ export default function UserRegistrationForm() {
         body: JSON.stringify({ 
           email, 
           password,
-          idDetails: combinedIdDetails,
-          personalNumber: combinedIdDetails?.personalNumber || "Not found"
+          idDetails: combinedIdDetails
         })
       });
       
