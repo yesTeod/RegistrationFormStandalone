@@ -7,7 +7,7 @@ const MAX_PERIOD = 24;
 
 function calculateMonthly(amount, period) {
   // Simple interest formula for demo: 10% annual, prorated
-  const interest = 0.1 * (period / 12);
+  const interest = 0.25 * (period / 12);
   const total = amount * (1 + interest);
   return (total / period).toFixed(2);
 }
@@ -16,6 +16,11 @@ function calculateAlternative(monthly) {
   // Alternative option, e.g., with insurance (for demo: +27%)
   return (parseFloat(monthly) * 1.275).toFixed(2);
 }
+
+const sliderStyles =
+  "w-full h-3 bg-gray-200 rounded-lg appearance-none cursor-pointer transition-all outline-none focus:ring-2 focus:ring-yellow-400";
+const sliderThumbStyles =
+  "appearance-none w-6 h-6 bg-yellow-400 border-4 border-white rounded-full shadow-lg transition-all duration-200 hover:bg-yellow-300 focus:bg-yellow-500 focus:outline-none";
 
 export default function LoanCalculator({ onGetLoan }) {
   const [amount, setAmount] = useState(MIN_AMOUNT);
@@ -37,7 +42,10 @@ export default function LoanCalculator({ onGetLoan }) {
           max={MAX_AMOUNT}
           value={amount}
           onChange={e => setAmount(Number(e.target.value))}
-          className="w-full accent-yellow-400"
+          className={sliderStyles + " slider-amount"}
+          style={{
+            background: `linear-gradient(to right, #facc15 0%, #facc15 ${(amount-MIN_AMOUNT)/(MAX_AMOUNT-MIN_AMOUNT)*100}%, #e5e7eb ${(amount-MIN_AMOUNT)/(MAX_AMOUNT-MIN_AMOUNT)*100}%, #e5e7eb 100%)`
+          }}
         />
         <div className="flex justify-between text-xs text-gray-400 mt-1">
           <span>{MIN_AMOUNT} lv.</span>
@@ -55,7 +63,10 @@ export default function LoanCalculator({ onGetLoan }) {
           max={MAX_PERIOD}
           value={period}
           onChange={e => setPeriod(Number(e.target.value))}
-          className="w-full accent-yellow-400"
+          className={sliderStyles + " slider-period"}
+          style={{
+            background: `linear-gradient(to right, #facc15 0%, #facc15 ${(period-MIN_PERIOD)/(MAX_PERIOD-MIN_PERIOD)*100}%, #e5e7eb ${(period-MIN_PERIOD)/(MAX_PERIOD-MIN_PERIOD)*100}%, #e5e7eb 100%)`
+          }}
         />
         <div className="flex justify-between text-xs text-gray-400 mt-1">
           <span>{MIN_PERIOD} months</span>
@@ -78,6 +89,25 @@ export default function LoanCalculator({ onGetLoan }) {
       >
         Get Loan
       </button>
+      {/* Custom slider thumb styles for Chrome, Edge, Safari */}
+      <style>{`
+        input[type='range'].slider-amount::-webkit-slider-thumb,
+        input[type='range'].slider-period::-webkit-slider-thumb {
+          ${sliderThumbStyles.replace(/;/g, " !important;")}
+        }
+        input[type='range'].slider-amount::-moz-range-thumb,
+        input[type='range'].slider-period::-moz-range-thumb {
+          ${sliderThumbStyles.replace(/;/g, " !important;")}
+        }
+        input[type='range'].slider-amount::-ms-thumb,
+        input[type='range'].slider-period::-ms-thumb {
+          ${sliderThumbStyles.replace(/;/g, " !important;")}
+        }
+        input[type='range'].slider-amount:focus::-webkit-slider-thumb,
+        input[type='range'].slider-period:focus::-webkit-slider-thumb {
+          box-shadow: 0 0 0 4px #fde68a;
+        }
+      `}</style>
     </div>
   );
 } 
