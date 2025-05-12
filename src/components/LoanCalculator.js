@@ -109,7 +109,7 @@ export default function LoanCalculator({ onGetLoan }) {
         </div>
       </div>
       <button
-        className="w-full py-3 bg-yellow-400 hover:bg-yellow-300 text-black font-semibold rounded-lg shadow transition text-lg"
+        className="w-full py-2 bg-yellow-400 hover:bg-yellow-300 text-black font-semibold rounded-lg shadow transition text-base"
         onClick={() => onGetLoan && onGetLoan({ amount, period, monthly })}
       >
         Get Loan
