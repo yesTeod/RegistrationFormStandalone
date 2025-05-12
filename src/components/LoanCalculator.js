@@ -6,7 +6,7 @@ const MIN_PERIOD = 3;
 const MAX_PERIOD = 24;
 
 function calculateMonthly(amount, period) {
-  // Simple interest formula for demo: 10% annual, prorated
+  // Simple interest formula for demo: 25% annual, prorated
   const interest = 0.25 * (period / 12);
   const total = amount * (1 + interest);
   return (total / period).toFixed(2);
@@ -18,9 +18,7 @@ function calculateAlternative(monthly) {
 }
 
 const sliderStyles =
-  "w-full h-3 bg-gray-200 rounded-lg appearance-none cursor-pointer transition-all outline-none focus:ring-2 focus:ring-yellow-400";
-const sliderThumbStyles =
-  "appearance-none w-6 h-6 bg-yellow-400 border-4 border-white rounded-full shadow-lg transition-all duration-200 hover:bg-yellow-300 focus:bg-yellow-500 focus:outline-none";
+  "w-full h-3 bg-gray-200 rounded-lg appearance-none cursor-pointer transition-all outline-none focus:ring-0 focus:outline-none";
 
 export default function LoanCalculator({ onGetLoan }) {
   const [amount, setAmount] = useState(MIN_AMOUNT);
@@ -89,23 +87,86 @@ export default function LoanCalculator({ onGetLoan }) {
       >
         Get Loan
       </button>
-      {/* Custom slider thumb styles for Chrome, Edge, Safari */}
+      {/* Custom slider thumb styles for all browsers, always yellow, rounded, no blue or square focus */}
       <style>{`
+        input[type='range'].slider-amount,
+        input[type='range'].slider-period {
+          outline: none !important;
+          box-shadow: none !important;
+        }
+        /* Webkit browsers */
         input[type='range'].slider-amount::-webkit-slider-thumb,
         input[type='range'].slider-period::-webkit-slider-thumb {
-          ${sliderThumbStyles.replace(/;/g, " !important;")}
-        }
-        input[type='range'].slider-amount::-moz-range-thumb,
-        input[type='range'].slider-period::-moz-range-thumb {
-          ${sliderThumbStyles.replace(/;/g, " !important;")}
-        }
-        input[type='range'].slider-amount::-ms-thumb,
-        input[type='range'].slider-period::-ms-thumb {
-          ${sliderThumbStyles.replace(/;/g, " !important;")}
+          appearance: none;
+          width: 1.5rem;
+          height: 1.5rem;
+          background: #facc15;
+          border: 4px solid #fff;
+          border-radius: 9999px;
+          box-shadow: 0 2px 8px 0 rgba(0,0,0,0.10);
+          transition: background 0.2s, box-shadow 0.2s;
         }
         input[type='range'].slider-amount:focus::-webkit-slider-thumb,
-        input[type='range'].slider-period:focus::-webkit-slider-thumb {
-          box-shadow: 0 0 0 4px #fde68a;
+        input[type='range'].slider-period:focus::-webkit-slider-thumb,
+        input[type='range'].slider-amount:active::-webkit-slider-thumb,
+        input[type='range'].slider-period:active::-webkit-slider-thumb {
+          background: #fde047;
+          box-shadow: 0 0 0 6px #fef9c3;
+          outline: none;
+        }
+        /* Remove default focus ring */
+        input[type='range'].slider-amount:focus,
+        input[type='range'].slider-period:focus {
+          outline: none !important;
+          box-shadow: none !important;
+        }
+        /* Firefox */
+        input[type='range'].slider-amount::-moz-range-thumb,
+        input[type='range'].slider-period::-moz-range-thumb {
+          width: 1.5rem;
+          height: 1.5rem;
+          background: #facc15;
+          border: 4px solid #fff;
+          border-radius: 9999px;
+          box-shadow: 0 2px 8px 0 rgba(0,0,0,0.10);
+          transition: background 0.2s, box-shadow 0.2s;
+        }
+        input[type='range'].slider-amount:focus::-moz-range-thumb,
+        input[type='range'].slider-period:focus::-moz-range-thumb,
+        input[type='range'].slider-amount:active::-moz-range-thumb,
+        input[type='range'].slider-period:active::-moz-range-thumb {
+          background: #fde047;
+          box-shadow: 0 0 0 6px #fef9c3;
+        }
+        /* Remove default focus ring in Firefox */
+        input[type='range'].slider-amount:focus,
+        input[type='range'].slider-period:focus {
+          outline: none !important;
+          box-shadow: none !important;
+        }
+        /* IE/Edge */
+        input[type='range'].slider-amount::-ms-thumb,
+        input[type='range'].slider-period::-ms-thumb {
+          width: 1.5rem;
+          height: 1.5rem;
+          background: #facc15;
+          border: 4px solid #fff;
+          border-radius: 9999px;
+          box-shadow: 0 2px 8px 0 rgba(0,0,0,0.10);
+          transition: background 0.2s, box-shadow 0.2s;
+        }
+        input[type='range'].slider-amount:focus::-ms-thumb,
+        input[type='range'].slider-period:focus::-ms-thumb,
+        input[type='range'].slider-amount:active::-ms-thumb,
+        input[type='range'].slider-period:active::-ms-thumb {
+          background: #fde047;
+          box-shadow: 0 0 0 6px #fef9c3;
+        }
+        /* Remove default focus ring in IE/Edge */
+        input[type='range'].slider-amount:focus,
+        input[type='range'].slider-period:focus {
+          outline: none !important;
+          box-shadow: none !important;
         }
       `}</style>
     </div>
