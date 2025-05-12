@@ -74,7 +74,7 @@ export default function LoanCalculator({ onGetLoan }) {
       <div className="bg-gray-50 rounded-lg p-4 flex flex-col gap-2">
         <div className="flex justify-between items-center">
           <span className="text-gray-700 font-medium">Monthly Payment</span>
-          <span className="text-blue-600 font-bold text-lg">{monthly} lv.</span>
+          <span className="font-bold text-lg" style={{color: "#facc15"}}>{monthly} lv.</span>
         </div>
         <div className="flex justify-between items-center text-sm text-gray-500">
           <span>With insurance option</span>
