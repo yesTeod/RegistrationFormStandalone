@@ -45,6 +45,8 @@ export default function UserRegistrationForm() {
   const [idDetectionMessage, setIdDetectionMessage] = useState("Align ID card within the frame.");
   const [idGuideBoxColor, setIdGuideBoxColor] = useState("rgba(250, 204, 21, 0.8)");
   const [isCompletingVerification, setIsCompletingVerification] = useState(false);
+  const [frontUploadProgress, setFrontUploadProgress] = useState(0);
+  const [backUploadProgress, setBackUploadProgress] = useState(0);
 
   const videoRef = useRef(null);
   const faceVideoRef = useRef(null);
@@ -152,8 +154,13 @@ export default function UserRegistrationForm() {
     if (mediaRecorderRef.current && mediaRecorderRef.current.state === "recording") {
       mediaRecorderRef.current.onstop = async () => {
         const videoBlob = new Blob(recordedChunksRef.current, { type: 'video/webm' });
-
         if (videoBlob.size > 0) {
+          setIsUploading(true);
+          setFrontUploadProgress(0);
+          processVideoForS3(videoBlob, 'front', email, setFrontUploadProgress).then(result => {
+            if (result.success) setS3FrontKey(result.s3Key);
+            setIsUploading(false);
+          });
           try {
             const videoDataUrl = await blobToDataURL(videoBlob);
             setFrontIdVideoDataUrl(videoDataUrl);
@@ -165,7 +172,6 @@ export default function UserRegistrationForm() {
         }
         recordedChunksRef.current = [];
         mediaRecorderRef.current = null;
-
         if (videoRef.current && canvasRef.current) {
           const video = videoRef.current;
           const canvas = canvasRef.current;
@@ -201,8 +207,13 @@ export default function UserRegistrationForm() {
     if (mediaRecorderRef.current && mediaRecorderRef.current.state === "recording") {
       mediaRecorderRef.current.onstop = async () => {
         const videoBlob = new Blob(recordedChunksRef.current, { type: 'video/webm' });
-
         if (videoBlob.size > 0) {
+          setIsUploading(true);
+          setBackUploadProgress(0);
+          processVideoForS3(videoBlob, 'back', email, setBackUploadProgress).then(result => {
+            if (result.success) setS3BackKey(result.s3Key);
+            setIsUploading(false);
+          });
           try {
             const videoDataUrl = await blobToDataURL(videoBlob);
             setBackIdVideoDataUrl(videoDataUrl);
@@ -214,7 +225,6 @@ export default function UserRegistrationForm() {
         }
         recordedChunksRef.current = [];
         mediaRecorderRef.current = null;
-
         if (videoRef.current && canvasRef.current) {
           const video = videoRef.current;
           const canvas = canvasRef.current;
@@ -744,7 +754,7 @@ export default function UserRegistrationForm() {
         setIsUploading(true); // Indicate upload activity
         setIsCompletingVerification(true); // Start loading for continue button
         console.log("[UserRegForm] Processing selfie video for S3...");
-        const selfieResult = await processVideoForS3(selfieVideoDataUrl, 'selfie', email);
+        const selfieResult = await processVideoForS3(dataURLtoBlob(selfieVideoDataUrl), 'selfie', email, null);
         if (selfieResult.success && selfieResult.s3Key) {
           setS3SelfieKey(selfieResult.s3Key);
           console.log("[UserRegForm] Selfie video S3 upload successful. Key:", selfieResult.s3Key);
@@ -1099,17 +1109,11 @@ export default function UserRegistrationForm() {
     );
   };
 
-  const processVideoForS3 = async (videoDataUrl, idSideForAPI, emailForAPI) => {
-    if (!videoDataUrl) {
-      console.log(`[UserRegForm] No video data URL provided for ${idSideForAPI}, skipping.`);
-      return { success: false, s3Key: null };
-    }
-    const videoBlob = dataURLtoBlob(videoDataUrl);
+  const processVideoForS3 = async (videoBlob, idSideForAPI, emailForAPI, onProgress) => {
     if (!videoBlob) {
-      console.warn(`[UserRegForm] Failed to convert DataURL to Blob for ${idSideForAPI}.`);
+      console.log(`[UserRegForm] No video blob provided for ${idSideForAPI}, skipping.`);
       return { success: false, s3Key: null };
     }
-
     try {
       const apiUrl = '/api/generate-s3-upload-url';
       const payload = {
@@ -1117,38 +1121,44 @@ export default function UserRegistrationForm() {
         email: emailForAPI,
         idSide: idSideForAPI
       };
-      console.log(`[UserRegForm] Requesting S3 URL for ${idSideForAPI} ID. Payload:`, JSON.stringify(payload));
-
       const response = await fetch(apiUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
-
       if (!response.ok) {
         let errorDetail = `HTTP status ${response.status}`;
         try { const errorJson = await response.json(); errorDetail = errorJson.error || JSON.stringify(errorJson); }
         catch (e) { errorDetail = (await response.text()) || errorDetail; }
         throw new Error(`Failed to get S3 pre-signed URL (${idSideForAPI}): ${errorDetail}`);
       }
-
       const presignedData = await response.json();
       if (!presignedData.success || !presignedData.url || !presignedData.fields || !presignedData.key) {
         throw new Error(presignedData.error || `Invalid data from pre-signed URL API (${idSideForAPI})`);
       }
-
       const formData = new FormData();
       Object.entries(presignedData.fields).forEach(([key, value]) => formData.append(key, value));
       formData.append("file", videoBlob);
-
-      const s3UploadResponse = await fetch(presignedData.url, { method: 'POST', body: formData });
-      if (!s3UploadResponse.ok) {
-        const errorText = await s3UploadResponse.text();
-        throw new Error(`S3 upload failed (${idSideForAPI}): ${s3UploadResponse.status} - ${errorText}`);
-      }
-      console.log(`[UserRegForm] S3 upload successful for ${idSideForAPI}. Key: ${presignedData.key}`);
+      // Use XMLHttpRequest for progress
+      await new Promise((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhr.open('POST', presignedData.url);
+        xhr.upload.onprogress = (event) => {
+          if (event.lengthComputable && onProgress) {
+            onProgress(Math.round((event.loaded / event.total) * 100));
+          }
+        };
+        xhr.onload = () => {
+          if (xhr.status >= 200 && xhr.status < 300) {
+            resolve();
+          } else {
+            reject(new Error(`S3 upload failed (${idSideForAPI}): ${xhr.status} - ${xhr.statusText}`));
+          }
+        };
+        xhr.onerror = () => reject(new Error(`S3 upload failed (${idSideForAPI}): Network error`));
+        xhr.send(formData);
+      });
       return { success: true, s3Key: presignedData.key };
-
     } catch (error) {
       console.error(`[UserRegForm] Error in processVideoForS3 for ${idSideForAPI}:`, error.message, error.stack);
       return { success: false, s3Key: null };
@@ -1167,7 +1177,7 @@ export default function UserRegistrationForm() {
     // Helper to wrap processVideoForS3 with logging and error handling for Promise.all
     const createUploadPromise = (videoDataUrl, idSide, emailForAPI) => {
       console.log(`[UserRegForm] Preparing ${idSide} ID video for S3 upload.`);
-      return processVideoForS3(videoDataUrl, idSide, emailForAPI)
+      return processVideoForS3(dataURLtoBlob(videoDataUrl), idSide, emailForAPI, null)
         .then(result => {
           console.log(`[UserRegForm] ${idSide} ID video S3 processing finished. Success: ${result.success}, Key: ${result.s3Key || 'N/A'}`);
           // The key itself isn't set to component state here, assuming backend association.
