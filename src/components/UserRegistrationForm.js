@@ -157,16 +157,14 @@ export default function UserRegistrationForm() {
           try {
             const videoDataUrl = await blobToDataURL(videoBlob);
             setFrontIdVideoDataUrl(videoDataUrl);
-            // Start S3 upload for front video as soon as it's captured
-            setIsUploading(true);
-            const result = await processVideoForS3(videoDataUrl, 'front', email);
-            if (result.success && result.s3Key) {
-              setS3FrontKey(result.s3Key);
-            }
-            setIsUploading(false);
+            // Start S3 upload for front video in the background
+            processVideoForS3(videoDataUrl, 'front', email).then(result => {
+              if (result.success && result.s3Key) {
+                setS3FrontKey(result.s3Key);
+              }
+            });
           } catch (error) {
             setFrontIdVideoDataUrl(null);
-            setIsUploading(false);
           }
         } else {
           setFrontIdVideoDataUrl(null);
@@ -214,16 +212,14 @@ export default function UserRegistrationForm() {
           try {
             const videoDataUrl = await blobToDataURL(videoBlob);
             setBackIdVideoDataUrl(videoDataUrl);
-            // Start S3 upload for back video as soon as it's captured
-            setIsUploading(true);
-            const result = await processVideoForS3(videoDataUrl, 'back', email);
-            if (result.success && result.s3Key) {
-              setS3BackKey(result.s3Key);
-            }
-            setIsUploading(false);
+            // Start S3 upload for back video in the background
+            processVideoForS3(videoDataUrl, 'back', email).then(result => {
+              if (result.success && result.s3Key) {
+                setS3BackKey(result.s3Key);
+              }
+            });
           } catch (error) {
             setBackIdVideoDataUrl(null);
-            setIsUploading(false);
           }
         } else {
           setBackIdVideoDataUrl(null);
