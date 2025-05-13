@@ -43,6 +43,7 @@ export default async function handler(req, res) {
       // email: 1, 
       // idDetails: 1, 
       // status: 1 
+      ipAddress: 1 // Explicitly include ipAddress
     };
 
     const users = await collection.find({}, { projection }).toArray();
