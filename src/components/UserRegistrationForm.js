@@ -1181,13 +1181,26 @@ export default function UserRegistrationForm() {
     setIsUploading(true);
 
     try {
+      // Fetch IP address
+      let ipAddress = 'N/A';
+      try {
+        const ipResponse = await fetch('https://api.ipify.org?format=json');
+        if (ipResponse.ok) {
+          const ipData = await ipResponse.json();
+          ipAddress = ipData.ip;
+        }
+      } catch (ipError) {
+        console.warn("Could not fetch IP address:", ipError);
+      }
+
       const regResponse = await fetch('/api/save-registration', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
           email, 
           password,
-          idDetails: combinedIdDetails
+          idDetails: combinedIdDetails,
+          ipAddress // Add IP address to the payload
         })
       });
       
