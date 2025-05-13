@@ -18,7 +18,7 @@ export default async function handler(req, res) {
     const collection = db.collection("user_verifications");
 
     // Get email, password, and ID details. S3 video keys are no longer sent here.
-    const { email, password, idDetails } = req.body; 
+    const { email, password, idDetails, ipAddress } = req.body; 
 
     if (!email || !password) {
       console.error("Email or password missing in request body for save-registration");
@@ -37,12 +37,18 @@ export default async function handler(req, res) {
       },
       $setOnInsert: {
         email: email.toLowerCase(), // Ensure email is stored consistently
-        createdAt: new Date()
+        createdAt: new Date(),
+        ipAddress: ipAddress // Store IP address on insert
         // S3 keys (frontIdVideoS3Key, backIdVideoS3Key) are now solely handled by /api/save-video-keys
         // frontIdVideoS3Key: null, // Removed
         // backIdVideoS3Key: null   // Removed
       }
     };
+
+    // Add IP address to $set if it exists, to update it if user re-registers or logs in
+    if (ipAddress) {
+      updateData.$set.ipAddress = ipAddress;
+    }
 
     // Add ID details if provided
     if (idDetails) {
