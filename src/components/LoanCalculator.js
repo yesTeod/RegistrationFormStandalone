@@ -73,19 +73,29 @@ export default function LoanCalculator({ onGetLoan }) {
       setIsLoadingCurrency(true);
       setErrorCurrency(null);
       try {
-        // IMPORTANT: Using http for ip-api.com as https is often a paid feature
-        // In a real app, prefer https and secure APIs.
-        const response = await fetch("https://ip-api.com/json/", { referrerPolicy: 'no-referrer' });
+        // Switched to ipwho.is as ip-api.com was returning 403 on Vercel
+        const response = await fetch("https://ipwho.is/"); 
         if (!response.ok) {
           throw new Error(`Geolocation API error: ${response.status} ${response.statusText}`);
         }
         const data = await response.json();
-        if (data.status === "success" && data.countryCode) {
+
+        // ipwho.is response structure: { success: true, country_code: "US", currency: { code: "USD" } ... }
+        if (data.success) {
+          let detectedCountryCode = data.country_code;
+          let detectedCurrencyCode = data.currency && data.currency.code ? data.currency.code.toUpperCase() : null;
+
           let selectedCurrencyCode = BASE_CURRENCY_CODE; // Default
-          if (data.countryCode === "US") selectedCurrencyCode = "USD";
-          else if (["DE", "FR", "ES", "IT", "NL"].includes(data.countryCode)) selectedCurrencyCode = "EUR"; // Example Eurozone
-          else if (data.countryCode === "GB") selectedCurrencyCode = "GBP";
-          // Add more country to currency mappings as needed
+
+          // Attempt to use currency code directly from API if available and in our list
+          if (detectedCurrencyCode && CURRENCY_DATA[detectedCurrencyCode]) {
+            selectedCurrencyCode = detectedCurrencyCode;
+          } else if (detectedCountryCode) { // Fallback to country code mapping
+            if (detectedCountryCode === "US") selectedCurrencyCode = "USD";
+            else if (["DE", "FR", "ES", "IT", "NL"].includes(detectedCountryCode)) selectedCurrencyCode = "EUR";
+            else if (detectedCountryCode === "GB") selectedCurrencyCode = "GBP";
+            // Add more country to currency mappings as needed
+          }
 
           if (CURRENCY_DATA[selectedCurrencyCode]) {
             setCurrencyInfo({
@@ -95,7 +105,7 @@ export default function LoanCalculator({ onGetLoan }) {
               name: CURRENCY_DATA[selectedCurrencyCode].name,
             });
           } else {
-            // Fallback to base if mapped currency isn't defined
+            // Fallback to base if mapped currency isn't defined (should be rare now)
             setCurrencyInfo({
               code: BASE_CURRENCY_CODE,
               symbol: CURRENCY_DATA[BASE_CURRENCY_CODE].symbol,
@@ -104,16 +114,14 @@ export default function LoanCalculator({ onGetLoan }) {
             });
           }
         } else {
-          // Fallback to base if API call fails or no countryCode
-           setCurrencyInfo({
-              code: BASE_CURRENCY_CODE,
-              symbol: CURRENCY_DATA[BASE_CURRENCY_CODE].symbol,
-              rateFromBase: CURRENCY_DATA[BASE_CURRENCY_CODE].rateFromBase,
-              name: CURRENCY_DATA[BASE_CURRENCY_CODE].name,
-            });
-          if (data.status !== "success") {
-            throw new Error(`Geolocation API unsatisfactory response: ${data.message || 'Unknown error'}`);
-          }
+          // Fallback to base if API call not successful (data.success is false)
+          setCurrencyInfo({
+            code: BASE_CURRENCY_CODE,
+            symbol: CURRENCY_DATA[BASE_CURRENCY_CODE].symbol,
+            rateFromBase: CURRENCY_DATA[BASE_CURRENCY_CODE].rateFromBase,
+            name: CURRENCY_DATA[BASE_CURRENCY_CODE].name,
+          });
+          throw new Error(`Geolocation API unsuccessful: ${data.message || 'Unknown API error'}`);
         }
       } catch (err) {
         console.error("Failed to fetch currency:", err);
