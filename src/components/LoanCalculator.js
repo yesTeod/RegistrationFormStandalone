@@ -5,6 +5,19 @@ const MAX_AMOUNT = 10000;
 const MIN_PERIOD = 3;
 const MAX_PERIOD = 24;
 
+// Define base currency
+const BASE_CURRENCY_CODE = "BGN";
+const BASE_CURRENCY_SYMBOL = "lv.";
+
+// Example currency data: { symbol, rateToBase, name }
+// rateToBase means 1 unit of this currency = X units of BASE_CURRENCY
+const CURRENCY_DATA = {
+  USD: { symbol: "$", rateFromBase: 0.55, name: "US Dollar" }, // 1 BGN = 0.55 USD
+  EUR: { symbol: "€", rateFromBase: 0.51, name: "Euro" }, // 1 BGN = 0.51 EUR
+  GBP: { symbol: "£", rateFromBase: 0.43, name: "British Pound" }, // 1 BGN = 0.43 GBP
+  [BASE_CURRENCY_CODE]: { symbol: BASE_CURRENCY_SYMBOL, rateFromBase: 1, name: "Bulgarian Lev" },
+};
+
 function getInterestRate(period) {
   if (period <= 6) return 0.20;
   if (period <= 12) return 0.25;
@@ -30,15 +43,96 @@ const sliderStyles =
 export default function LoanCalculator({ onGetLoan }) {
   const [amount, setAmount] = useState(MIN_AMOUNT);
   const [period, setPeriod] = useState(MIN_PERIOD);
+  const [currencyInfo, setCurrencyInfo] = useState({
+    code: BASE_CURRENCY_CODE,
+    symbol: BASE_CURRENCY_SYMBOL,
+    rateFromBase: 1, // How many units of the current currency are 1 BGN
+    name: "Bulgarian Lev",
+  });
+  const [isLoadingCurrency, setIsLoadingCurrency] = useState(true);
+  const [errorCurrency, setErrorCurrency] = useState(null);
   const containerRef = useRef(null);
 
-  const monthly = calculateMonthly(amount, period);
-  const alternative = calculateAlternative(monthly);
+  const monthlyBase = calculateMonthly(amount, period); // Always calculate in base currency
+  const alternativeBase = calculateAlternative(monthlyBase);
 
-  // Tilt effect like UserRegistrationForm
+  // Convert base currency values to the selected display currency
+  const displayMonthly = (parseFloat(monthlyBase) * currencyInfo.rateFromBase).toFixed(2);
+  const displayAlternative = (parseFloat(alternativeBase) * currencyInfo.rateFromBase).toFixed(2);
+  const displayAmount = Math.round(amount * currencyInfo.rateFromBase);
+  const displayMinAmount = Math.round(MIN_AMOUNT * currencyInfo.rateFromBase);
+  const displayMaxAmount = Math.round(MAX_AMOUNT * currencyInfo.rateFromBase);
+
+  // Tilt effect and IP-based currency
   useEffect(() => {
     const card = containerRef.current;
     if (!card) return;
+
+    // IP Geolocation and Currency Setting
+    const fetchCurrency = async () => {
+      setIsLoadingCurrency(true);
+      setErrorCurrency(null);
+      try {
+        // IMPORTANT: Using http for ip-api.com as https is often a paid feature
+        // In a real app, prefer https and secure APIs.
+        const response = await fetch("http://ip-api.com/json/");
+        if (!response.ok) {
+          throw new Error(`Geolocation API error: ${response.status}`);
+        }
+        const data = await response.json();
+        if (data.status === "success" && data.countryCode) {
+          let selectedCurrencyCode = BASE_CURRENCY_CODE; // Default
+          if (data.countryCode === "US") selectedCurrencyCode = "USD";
+          else if (["DE", "FR", "ES", "IT", "NL"].includes(data.countryCode)) selectedCurrencyCode = "EUR"; // Example Eurozone
+          else if (data.countryCode === "GB") selectedCurrencyCode = "GBP";
+          // Add more country to currency mappings as needed
+
+          if (CURRENCY_DATA[selectedCurrencyCode]) {
+            setCurrencyInfo({
+              code: selectedCurrencyCode,
+              symbol: CURRENCY_DATA[selectedCurrencyCode].symbol,
+              rateFromBase: CURRENCY_DATA[selectedCurrencyCode].rateFromBase,
+              name: CURRENCY_DATA[selectedCurrencyCode].name,
+            });
+          } else {
+            // Fallback to base if mapped currency isn't defined
+            setCurrencyInfo({
+              code: BASE_CURRENCY_CODE,
+              symbol: CURRENCY_DATA[BASE_CURRENCY_CODE].symbol,
+              rateFromBase: CURRENCY_DATA[BASE_CURRENCY_CODE].rateFromBase,
+              name: CURRENCY_DATA[BASE_CURRENCY_CODE].name,
+            });
+          }
+        } else {
+          // Fallback to base if API call fails or no countryCode
+           setCurrencyInfo({
+              code: BASE_CURRENCY_CODE,
+              symbol: CURRENCY_DATA[BASE_CURRENCY_CODE].symbol,
+              rateFromBase: CURRENCY_DATA[BASE_CURRENCY_CODE].rateFromBase,
+              name: CURRENCY_DATA[BASE_CURRENCY_CODE].name,
+            });
+          if (data.status !== "success") {
+            throw new Error(`Geolocation API unsatisfactory response: ${data.message || 'Unknown error'}`);
+          }
+        }
+      } catch (err) {
+        console.error("Failed to fetch currency:", err);
+        setErrorCurrency(err.message);
+        // Fallback to base currency on error
+        setCurrencyInfo({
+          code: BASE_CURRENCY_CODE,
+          symbol: CURRENCY_DATA[BASE_CURRENCY_CODE].symbol,
+          rateFromBase: CURRENCY_DATA[BASE_CURRENCY_CODE].rateFromBase,
+          name: CURRENCY_DATA[BASE_CURRENCY_CODE].name,
+        });
+      } finally {
+        setIsLoadingCurrency(false);
+      }
+    };
+
+    fetchCurrency();
+
+    // Tilt effect like UserRegistrationForm
     const handleMouseMove = (e) => {
       const rect = card.getBoundingClientRect();
       const x = e.clientX - rect.left;
@@ -66,13 +160,19 @@ export default function LoanCalculator({ onGetLoan }) {
       <div>
         <div className="flex justify-between items-center mb-1">
           <span className="text-gray-700 font-semibold">Amount</span>
-          <span className="text-gray-900 font-bold">{amount} lv.</span>
+          {isLoadingCurrency ? (
+            <span className="text-gray-500 text-sm">Loading currency...</span>
+          ) : errorCurrency ? (
+            <span className="text-red-500 text-xs">Error loading currency</span>
+          ) : (
+            <span className="text-gray-900 font-bold">{displayAmount} {currencyInfo.symbol}</span>
+          )}
         </div>
         <input
           type="range"
           min={MIN_AMOUNT}
           max={MAX_AMOUNT}
-          value={amount}
+          value={amount} // Internal value remains in base currency
           onChange={e => setAmount(Number(e.target.value))}
           className={sliderStyles + " slider-amount"}
           style={{
@@ -80,9 +180,16 @@ export default function LoanCalculator({ onGetLoan }) {
           }}
         />
         <div className="flex justify-between text-xs text-gray-400 mt-1">
-          <span>{MIN_AMOUNT} lv.</span>
-          <span>{MAX_AMOUNT} lv.</span>
+          {isLoadingCurrency ? (
+            <span>...</span>
+          ) : (
+            <>
+              <span>{displayMinAmount} {currencyInfo.symbol}</span>
+              <span>{displayMaxAmount} {currencyInfo.symbol}</span>
+            </>
+          )}
         </div>
+         {errorCurrency && <div className="text-xs text-red-500 mt-1">Could not determine local currency. Using default.</div>}
       </div>
       <div>
         <div className="flex justify-between items-center mb-1">
@@ -111,24 +218,52 @@ export default function LoanCalculator({ onGetLoan }) {
       <div className="bg-gray-50 rounded-lg p-4 flex flex-col gap-2">
         <div className="flex justify-between items-center">
           <span className="text-gray-700 font-medium">Monthly Payment</span>
-          <span className="font-medium text-base" style={{color: "#facc15"}}>{monthly} lv.</span>
+          {isLoadingCurrency ? (
+            <span className="text-gray-500 text-sm">...</span>
+          ) : (
+            <span className="font-medium text-base" style={{color: "#facc15"}}>{displayMonthly} {currencyInfo.symbol}</span>
+          )}
         </div>
         <div className="flex justify-between items-center text-xs text-gray-500">
           <span>With insurance option</span>
-          <span className="font-medium text-base">{alternative} lv.</span>
+          {isLoadingCurrency ? (
+             <span className="text-gray-500 text-sm">...</span>
+          ) : (
+            <span className="font-medium text-base">{displayAlternative} {currencyInfo.symbol}</span>
+          )}
         </div>
         <div className="flex justify-between items-center text-xs text-gray-500 pt-2">
           <span>Total repayment:</span>
-          <span className="font-medium">{(monthly * period).toFixed(2)} lv.</span>
+          {isLoadingCurrency ? (
+            <span className="text-gray-500 text-sm">...</span>
+          ) : (
+            <span className="font-medium">{(parseFloat(displayMonthly) * period).toFixed(2)} {currencyInfo.symbol}</span>
+          )}
         </div>
         <div className="flex justify-between items-center text-xs text-gray-500">
           <span>Total with insurance:</span>
-          <span className="font-medium">{(alternative * period).toFixed(2)} lv.</span>
+          {isLoadingCurrency ? (
+            <span className="text-gray-500 text-sm">...</span>
+          ) : (
+            <span className="font-medium">{(parseFloat(displayAlternative) * period).toFixed(2)} {currencyInfo.symbol}</span>
+          )}
         </div>
+         {!isLoadingCurrency && currencyInfo.code !== BASE_CURRENCY_CODE && (
+          <div className="text-xs text-gray-400 pt-2 text-right">
+            Original amounts in {BASE_CURRENCY_SYMBOL} ({CURRENCY_DATA[BASE_CURRENCY_CODE].name}). Exchange rate applied: 1 {BASE_CURRENCY_SYMBOL} ≈ {currencyInfo.rateFromBase.toFixed(2)} {currencyInfo.code}.
+          </div>
+        )}
       </div>
       <button
         className="w-full py-2 bg-yellow-400 hover:bg-yellow-300 text-black font-semibold rounded-lg shadow transition text-base"
-        onClick={() => onGetLoan && onGetLoan({ amount, period, monthly })}
+        onClick={() => onGetLoan && onGetLoan({ 
+          amount, // Base amount
+          period, 
+          monthly: monthlyBase, // Base monthly
+          currencyCode: currencyInfo.code, // Display currency code
+          displayAmount: displayAmount, // Display amount
+          displayMonthly: displayMonthly, // Display monthly
+        })}
       >
         Get Loan
       </button>
