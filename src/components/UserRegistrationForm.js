@@ -47,6 +47,7 @@ export default function UserRegistrationForm() {
   const [isCompletingVerification, setIsCompletingVerification] = useState(false);
   const [isPC, setIsPC] = useState(false);
   const [qrCodeUrl, setQrCodeUrl] = useState("");
+  const [showQrCode, setShowQrCode] = useState(false);
 
   const videoRef = useRef(null);
   const faceVideoRef = useRef(null);
@@ -137,7 +138,12 @@ export default function UserRegistrationForm() {
           handleFlip("loggedIn", "right");
         }
       } else if (data.code === 'EMAIL_NOT_FOUND') {
-        handleFlip("camera", "right");
+        if (isPC) {
+          setShowQrCode(true); // Show QR code for PC users
+          // Do not flip, allow user to scan QR
+        } else {
+          handleFlip("camera", "right"); // Proceed to camera for mobile users
+        }
       } else if (data.code === 'INCORRECT_PASSWORD') {
         setLoginError("Incorrect password");
       } else {
@@ -1358,15 +1364,15 @@ export default function UserRegistrationForm() {
   return (
     <div
       ref={containerRef}
-      className={`p-6 ${step === "adminDashboard" ? "max-w-[75%]" : isPC && step === "form" ? "max-w-2xl" : "max-w-md"} mx-auto bg-gradient-to-br from-gray-100 to-gray-300 rounded-3xl shadow-xl transition-transform duration-300 relative border border-gray-300 will-change-transform`}
+      className={`p-6 ${step === "adminDashboard" ? "max-w-[75%]" : showQrCode && step === "form" ? "max-w-2xl" : "max-w-md"} mx-auto bg-gradient-to-br from-gray-100 to-gray-300 rounded-3xl shadow-xl transition-transform duration-300 relative border border-gray-300 will-change-transform`}
     >
       <style>{`button { border-radius: 10px !important; }`}</style>
       
      
 
       {step === "form" && (
-        <div className={`flex ${isPC && qrCodeUrl ? 'flex-row gap-6' : 'flex-col'} items-start`}>
-          <div className={`${isPC && qrCodeUrl ? 'w-2/3' : 'w-full'} space-y-4`}>
+        <div className={`flex ${showQrCode && qrCodeUrl ? 'flex-row gap-6' : 'flex-col'} items-start`}>
+          <div className={`${showQrCode && qrCodeUrl ? 'w-2/3' : 'w-full'} space-y-4`}>
             <h2 className="text-2xl font-semibold text-gray-800">Register or Login</h2>
             <input
               type="email"
@@ -1411,7 +1417,7 @@ export default function UserRegistrationForm() {
             </div>
           </div>
 
-          {isPC && qrCodeUrl && (
+          {showQrCode && qrCodeUrl && (
             <div className="w-1/3 p-4 bg-white border border-gray-200 rounded-xl shadow-lg flex flex-col items-center justify-center space-y-2 self-center">
               <p className="text-xs text-gray-700 text-center font-medium">
                 Scan with your mobile to continue registration on your phone.
