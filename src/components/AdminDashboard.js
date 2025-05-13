@@ -268,6 +268,10 @@ export default function AdminDashboard() {
                               <p className="text-gray-600">{user.idDetails.personalNumber}</p>
                             </div>
                           )}
+                          <div>
+                            <h4 className="font-semibold text-gray-700 mb-1">IP Address:</h4>
+                            <p className="text-gray-600">{user.ipAddress || 'N/A'}</p>
+                          </div>
                         </div>
                       </td>
                     </tr>
