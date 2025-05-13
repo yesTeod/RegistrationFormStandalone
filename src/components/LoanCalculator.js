@@ -75,9 +75,9 @@ export default function LoanCalculator({ onGetLoan }) {
       try {
         // IMPORTANT: Using http for ip-api.com as https is often a paid feature
         // In a real app, prefer https and secure APIs.
-        const response = await fetch("https://ip-api.com/json/");
+        const response = await fetch("https://ip-api.com/json/", { referrerPolicy: 'no-referrer' });
         if (!response.ok) {
-          throw new Error(`Geolocation API error: ${response.status}`);
+          throw new Error(`Geolocation API error: ${response.status} ${response.statusText}`);
         }
         const data = await response.json();
         if (data.status === "success" && data.countryCode) {
