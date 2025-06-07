@@ -1,0 +1,1 @@
+Liveness Face Verification and ID Document Verification Registration Form App to ensure identity authenticity. It is designed for use cases such as fintech onboarding, eKYC (electronic Know Your Customer) processes and secure access systems.
