@@ -3,13 +3,13 @@ import { createPresignedPost } from "@aws-sdk/s3-presigned-post";
 import { v4 as uuidv4 } from 'uuid';
 import { MongoClient } from "mongodb";
 
-// S3 Configuration
+// S3 Config
 const S3_BUCKET_NAME = process.env.S3_BUCKET_NAME;
 const AWS_REGION = process.env.AWS_REGION;
 const AWS_ACCESS_KEY_ID = process.env.AWS_ACCESS_KEY_ID;
 const AWS_SECRET_ACCESS_KEY = process.env.AWS_SECRET_ACCESS_KEY;
 
-// MongoDB Configuration
+// MongoDB Config
 const MONGODB_URI = process.env.MONGODB_URI;
 const MONGODB_DB_NAME = process.env.MONGODB_DB_NAME;
 
@@ -69,7 +69,6 @@ export default async function handler(req, res) {
     const fileExtension = fileType.split('/')[1] || 'bin'; 
     const uniqueFileName = `${uuidv4()}.${fileExtension}`; // This is the S3 object key
 
-    // Save/Update S3 key in MongoDB
     try {
       const db = await getDb();
       const collection = db.collection("user_verifications");
@@ -89,8 +88,7 @@ export default async function handler(req, res) {
           ...updateQuery,
           $setOnInsert: {
             email: email.toLowerCase(),
-            createdAt: new Date()
-            // Any other fields to initialize if it's a new user record
+            createdAt: new Date()            
           }
         },
         { upsert: true }
@@ -130,3 +128,4 @@ export default async function handler(req, res) {
     return res.status(500).json({ success: false, error: "Internal Server Error", message: error.message });
   }
 } 
+
