@@ -35,8 +35,7 @@ export default function AdminDashboard() {
   }, []);
 
   const handleLogout = () => {
-    // For now, redirect to the root or login page
-    // In a real app, you'd clear tokens/session state
+    // Redirect only for now
     window.location.href = "/"; 
   };
 
@@ -287,7 +286,6 @@ export default function AdminDashboard() {
         <div 
           className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 overflow-y-auto"
           onClick={(e) => {
-            // If the click is on the backdrop itself, close the modal
             if (e.target === e.currentTarget) {
               closeVideoModal();
             }
