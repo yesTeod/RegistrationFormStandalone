@@ -140,7 +140,6 @@ export default function UserRegistrationForm() {
       } else if (data.code === 'EMAIL_NOT_FOUND') {
         if (isPC) {
           setShowQrCode(true); // Show QR code for PC users
-          // Do not flip, allow user to scan QR
         } else {
           handleFlip("camera", "right"); // Proceed to camera for mobile users
         }
@@ -685,7 +684,6 @@ export default function UserRegistrationForm() {
     }
 
     return () => {
-      // Cleanup: stop recorder and clear timer when component unmounts or step changes
       clearTimeout(selfieVideoTimerIdRef.current);
       if (selfieMediaRecorderRef.current && selfieMediaRecorderRef.current.state === "recording") {
         selfieMediaRecorderRef.current.stop();
@@ -761,8 +759,8 @@ export default function UserRegistrationForm() {
     if (faceVerified) {
       // If face is verified, attempt to upload selfie video before saving registration
       if (selfieVideoDataUrl) {
-        setIsUploading(true); // Indicate upload activity
-        setIsCompletingVerification(true); // Start loading for continue button
+        setIsUploading(true); 
+        setIsCompletingVerification(true);
         console.log("[UserRegForm] Processing selfie video for S3...");
         const selfieResult = await processVideoForS3(selfieVideoDataUrl, 'selfie', email);
         if (selfieResult.success && selfieResult.s3Key) {
@@ -770,7 +768,7 @@ export default function UserRegistrationForm() {
           console.log("[UserRegForm] Selfie video S3 upload successful. Key:", selfieResult.s3Key);
         } else {
           console.warn("[UserRegForm] Selfie video S3 upload failed or no key returned.");
-          // Decide if this failure is critical. For now, proceed with registration.
+          // TBD if this failure is critical. For now, proceed with registration.
         }
         setIsUploading(false);
       } else {
