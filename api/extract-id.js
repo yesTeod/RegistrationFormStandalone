@@ -1,14 +1,12 @@
-// Using AWS SDK for Textract
 import { TextractClient, AnalyzeDocumentCommand } from "@aws-sdk/client-textract";
 
-// This is a Vercel Edge Function - better for long-running processes
+// Vercel Edge Function
 export const config = {
   runtime: 'edge',
   regions: ['iad1'], // US East (N. Virginia)
 };
 
 export default async function handler(request) {
-  // Only accept POST requests
   if (request.method !== 'POST') {
     return new Response(
       JSON.stringify({ error: 'Method not allowed' }),
@@ -17,7 +15,6 @@ export default async function handler(request) {
   }
 
   try {
-    // Parse the request body
     const data = await request.json();
     const { image, englishOnly = false } = data;
 
@@ -28,14 +25,12 @@ export default async function handler(request) {
       );
     }
 
-    // Extract base64 data from the data URI
     let base64Image = image;
     if (image.startsWith('data:image/')) {
       const base64Data = image.split(',')[1];
       base64Image = base64Data;
     }
 
-    // Convert base64 to binary
     const binaryImage = Buffer.from(base64Image, 'base64');
     
     // Configure AWS client
@@ -47,7 +42,7 @@ export default async function handler(request) {
       }
     });
 
-    // Prepare Textract request
+    // Textract request
     const params = {
       Document: {
         Bytes: binaryImage
@@ -64,11 +59,9 @@ export default async function handler(request) {
     console.log('Textract Response Received');
     
     if (textractResponse.Blocks) {
-      // Extract the full text from Textract response
       const extractedText = extractTextFromBlocks(textractResponse.Blocks);
       console.log("Textract Extracted Text:", extractedText);
       
-      // Filter the text to English-only characters if requested
       const processedText = englishOnly ?
         extractedText.replace(/[^a-zA-Z0-9\s\-/.,]/g, ' ').replace(/\s+/g, ' ').trim() : // Keep only basic Latin, numbers, space, -, /, ., ,
         extractedText;
@@ -115,7 +108,7 @@ export default async function handler(request) {
       surname = surname || extractedNameDetailsFromText.surname;
       fatherName = fatherName || extractedNameDetailsFromText.fatherName;
 
-      // Ensure "Not found" for empty or null results, and trim
+      // "Not found" for empty or null results, and trim
       givenName = (givenName && givenName.trim() !== "") ? givenName.trim() : "Not found";
       surname = (surname && surname.trim() !== "") ? surname.trim() : "Not found";
       fatherName = (fatherName && fatherName.trim() !== "") ? fatherName.trim() : "Not found";
@@ -143,11 +136,11 @@ export default async function handler(request) {
       if (idNumberValue && typeof idNumberValue === 'string') {
         const idLower = idNumberValue.toLowerCase();
         if (idLower === "surname" || idLower === "name") {
-          const idFromTextAttempt = extractIdNumberFromText(processedText); // Re-attempt with improved extractIdNumberFromText
+          const idFromTextAttempt = extractIdNumberFromText(processedText);
           if (idFromTextAttempt && idFromTextAttempt.toLowerCase() !== "surname" && idFromTextAttempt.toLowerCase() !== "name" && idFromTextAttempt !== "Not found") {
             idNumberValue = idFromTextAttempt;
           } else {
-            idNumberValue = "Not found"; // Default to "Not found" if still problematic
+            idNumberValue = "Not found"; // Default to "Not found" if unable
           }
         }
       }
@@ -177,8 +170,7 @@ export default async function handler(request) {
         personalNumber
       };
       
-      // Log the complete extracted details
-      console.log("Full ID extraction results:", JSON.stringify(idDetails, null, 2));
+      // console.log("Full ID extraction results:", JSON.stringify(idDetails, null, 2));
       
       return new Response(
         JSON.stringify(idDetails),
@@ -191,14 +183,14 @@ export default async function handler(request) {
           error: "No text detected in image", 
           fullName: "Not found", 
           fatherName: "Not found",
-          idNumber: "Not found", // Ensure this is consistent
+          idNumber: "Not found", 
           expiry: "Not found",
           dateOfBirth: "Not found",
           placeOfBirth: "Not found",
           nationality: "Not found",
           gender: "Not found",
           issueDate: "Not found",
-          personalNumber: "Not found" // Added personalNumber
+          personalNumber: "Not found"
         }),
         { status: 200, headers: { 'Content-Type': 'application/json' } }
       );
@@ -210,21 +202,20 @@ export default async function handler(request) {
         error: error.message || "Processing error", 
         fullName: "Not found", 
         fatherName: "Not found",
-        idNumber: "Not found", // Ensure this is consistent
+        idNumber: "Not found",
         expiry: "Not found",
         dateOfBirth: "Not found",
         placeOfBirth: "Not found",
         nationality: "Not found",
         gender: "Not found",
         issueDate: "Not found",
-        personalNumber: "Not found" // Added personalNumber
+        personalNumber: "Not found" 
       }),
       { status: 200, headers: { 'Content-Type': 'application/json' } }
     );
   }
 }
 
-// Extract text from Textract blocks
 function extractTextFromBlocks(blocks) {
   let fullText = '';
   const lineBlocks = blocks.filter(block => block.BlockType === 'LINE');
@@ -318,7 +309,6 @@ function extractNameFromText(text) {
   // Split the OCR text into an array of non-empty trimmed lines
   const lines = text.split('\n').map(line => line.trim()).filter(Boolean);
   
-  // Initialize our result with default values
   const data = {
     givenName: "Not found", // "name" part of "name + surname"
     surname: "Not found",
