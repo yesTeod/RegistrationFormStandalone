@@ -97,9 +97,7 @@ export default async function handler(req, res) {
 
     } catch (dbError) {
       console.error(`[S3 URL Gen API] MongoDB error for email ${email}, side ${idSide}:`, dbError);
-      // Decide if this should be a fatal error for the pre-signed URL generation.
-      // For now, we'll let it proceed to generate the URL but log the DB error.
-      // Optionally, return an error response:
+      // TBD if this should be a fatal error for the pre-signed URL generation.
       // return res.status(500).json({ success: false, error: "Database operation failed during S3 key registration", message: dbError.message });
     }
 
@@ -128,4 +126,5 @@ export default async function handler(req, res) {
     return res.status(500).json({ success: false, error: "Internal Server Error", message: error.message });
   }
 } 
+
 
