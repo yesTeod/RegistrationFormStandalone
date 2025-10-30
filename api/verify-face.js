@@ -1,4 +1,3 @@
-// in verify-face.js
 import {
   RekognitionClient,
   DetectFacesCommand,
@@ -42,11 +41,11 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'No face detected in selfie' });
     }
 
-    // 3) Now compare
+    // 3) Compare
     const compare = new CompareFacesCommand({
       SourceImage: { Bytes: sourceBuffer },
       TargetImage: { Bytes: targetBuffer },
-      SimilarityThreshold: 80
+      SimilarityThreshold: 85
     });
     const { FaceMatches } = await client.send(compare);
     const match = Array.isArray(FaceMatches) && FaceMatches.length > 0;
