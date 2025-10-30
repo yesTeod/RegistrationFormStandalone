@@ -40,10 +40,8 @@ export default async function handler(req, res) {
       const rightEyeClosed = faceDetails.EyesOpen && faceDetails.EyesOpen.Value === false && faceDetails.EyesOpen.Confidence > 80;
       isBlinking = leftEyeClosed || rightEyeClosed;
       
-      // Check for smiling with high confidence
       isSmiling = faceDetails.Smile && faceDetails.Smile.Value === true && faceDetails.Smile.Confidence > 80;
       
-      // Get head pose information
       if (faceDetails.Pose) {
         headPose = {
           roll: faceDetails.Pose.Roll,  // Tilt (left/right)
@@ -70,3 +68,4 @@ export default async function handler(req, res) {
     return res.status(500).json({ error: 'Face detection failed', details: err.message });
   }
 }
+
