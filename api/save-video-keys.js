@@ -5,16 +5,13 @@ const dbName = process.env.MONGODB_DB_NAME;
 
 if (!uri) {
   console.error("MONGODB_URI environment variable is not set.");
-  // Optional: throw new Error to prevent startup if critical, or handle gracefully
 }
 if (!dbName) {
   console.error("MONGODB_DB_NAME environment variable is not set.");
-  // Optional: throw new Error or handle gracefully
 }
 
-// Initialize client outside of handler to reuse connection
 const client = new MongoClient(uri);
-let dbConnectionPromise = null; // To cache the connection promise
+let dbConnectionPromise = null;
 
 async function getDb() {
   if (!dbConnectionPromise) {
@@ -22,13 +19,13 @@ async function getDb() {
       console.log("[DB Connection] Successfully connected to MongoDB.");
       connectedClient.on('close', () => {
         console.log("[DB Connection] MongoDB connection closed.");
-        dbConnectionPromise = null; // Reset promise on close
+        dbConnectionPromise = null;
       });
       return connectedClient.db(dbName);
     }).catch(err => {
       console.error("[DB Connection] Failed to connect to MongoDB:", err);
-      dbConnectionPromise = null; // Reset promise on error
-      throw err; // Re-throw to be caught by handler
+      dbConnectionPromise = null; 
+      throw err; 
     });
   }
   return dbConnectionPromise;
@@ -48,7 +45,7 @@ export default async function handler(req, res) {
   }
 
   try {
-    const db = await getDb(); // Get or establish database connection
+    const db = await getDb();
     const collection = db.collection("user_verifications");
 
     const { frontS3Key, backS3Key, selfieS3Key, email } = req.body;
@@ -84,7 +81,7 @@ export default async function handler(req, res) {
     console.log("[API /api/save-video-keys] Attempting MongoDB update for email:", email, "With data:", JSON.stringify(updateData));
 
     const result = await collection.updateOne(
-      { email: email.toLowerCase() }, // Match email case-insensitively for robustness
+      { email: email.toLowerCase() },
       updateData,
       { upsert: true } 
     );
@@ -119,6 +116,7 @@ export default async function handler(req, res) {
     console.error("[API /api/save-video-keys] Error processing request:", error.message, error.stack);
     res.status(500).json({ success: false, error: "Internal Server Error", message: error.message });
   }
-  // Note: client.close() is not called here because we are reusing the connection
+  // client.close() is not called here because we are reusing the connection
   // It will be closed if the server process ends or on an explicit close event from the driver.
 } 
+
