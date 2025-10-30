@@ -1,8 +1,7 @@
 import { RekognitionClient, DetectTextCommand } from "@aws-sdk/client-rekognition";
 
 // Configure AWS Rekognition Client
-// IMPORTANT: Ensure these environment variables are set in your Vercel project settings:
-// AWS_REGION (e.g., 'us-east-1')
+// AWS_REGION 
 // AWS_ACCESS_KEY_ID
 // AWS_SECRET_ACCESS_KEY
 
@@ -27,7 +26,6 @@ function calculateOverallBoundingBox(textDetections) {
   let validBoxesFound = false;
 
   textDetections.forEach(detection => {
-    // Consider text lines or significant words for bounding box calculation
     if (detection.Type === "LINE" || (detection.Type === "WORD" && detection.Geometry.BoundingBox.Width > 0.05 && detection.Geometry.BoundingBox.Height > 0.02)) {
       const box = detection.Geometry.BoundingBox;
       minLeft = Math.min(minLeft, box.Left);
@@ -66,7 +64,6 @@ export default async function handler(req, res) {
 
     const base64DataMatch = imageDataUrl.match(/^data:image\/jpeg;base64,(.+)$/);
     if (!base64DataMatch || !base64DataMatch[1]) {
-       // Fallback for other image types or slight variations if needed, or stricter error
       const parts = imageDataUrl.split(',');
       if (parts.length < 2 || !parts[1]) {
         return res.status(400).json({ success: false, status: "ERROR", message: "Invalid image data URL format." });
@@ -105,7 +102,7 @@ export default async function handler(req, res) {
         });
     }
 
-    const overallBox = calculateOverallBoundingBox(lines); // Use lines for overall positioning
+    const overallBox = calculateOverallBoundingBox(lines); 
 
     if (!overallBox || overallBox.width <= 0 || overallBox.height <= 0) {
         return res.status(200).json({
@@ -115,7 +112,7 @@ export default async function handler(req, res) {
         });
     }
 
-    // Define criteria for good position (these are examples and will likely need tuning)
+    // Define criteria for good position 
     // These thresholds expect the ID to be the dominant object in the frame.
     const minWidthThreshold = 0.50; // ID should cover at least 50% of the image width
     const minHeightThreshold = 0.40; // ID should cover at least 40% of the image height
@@ -166,8 +163,8 @@ export default async function handler(req, res) {
         success: false, 
         status: "ERROR", 
         message: userMessage,
-        // For debugging, you might want to include error.name or a sanitized error.message in development
         // errorDetails: process.env.NODE_ENV === 'development' ? error.name : undefined 
     });
   }
+
 } 
